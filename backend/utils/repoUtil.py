@@ -12,12 +12,24 @@ class RepoUtil:
 
     @staticmethod
     def build_tree(current_path):
-        # ignore hidden files and folders
-        if os.path.basename(current_path).startswith('.'):
+        """Build a tree structure of a directory
+        
+        Args:
+            current_path: Path to build tree from
+        
+        Returns:
+            Dict representing directory tree, or None if path should be skipped
+        """
+        basename = os.path.basename(current_path)
+        
+        # Skip directories that should be excluded
+        if os.path.isdir(current_path) and RepoUtil.should_skip_directory(basename):
             return None
-        # ignore __pycache__ folders
-        if os.path.basename(current_path) == '__pycache__':
+        
+        # Skip hidden files
+        if basename.startswith('.'):
             return None
+            
         if os.path.isdir(current_path):
             children = []
             for item in os.listdir(current_path):
@@ -26,28 +38,53 @@ class RepoUtil:
                 if child_tree is not None:
                     children.append(child_tree)
             return {
-                "name": os.path.basename(current_path),
+                "name": basename,
                 "type": "directory",
                 "children": children
             }
         else:
             return {
-                "name": os.path.basename(current_path),
+                "name": basename,
                 "type": "file"
             }
 
     @staticmethod
-    def repo_filter(root: str):
-        """Filter function to identify valuable files for analysis"""
+    def is_valuable_file(file_name: str, allowed_extensions=None) -> bool:
+        """Check if a file is valuable based on its extension
         
-        def is_valuable_file(file_name: str) -> bool:
-            _, ext = os.path.splitext(file_name)
+        Args:
+            file_name: Name of the file to check
+            allowed_extensions: List of allowed extensions, or None for default (CODE + DOC)
+        """
+        _, ext = os.path.splitext(file_name)
+        if allowed_extensions is None:
             return ext in Const.CODE_EXTENSIONS or ext in Const.DOC_EXTENSIONS
+        return ext in allowed_extensions
+    
+    @staticmethod
+    def should_skip_directory(dir_name: str) -> bool:
+        """Check if a directory should be skipped during traversal"""
+        return (dir_name.startswith('.') or 
+                dir_name in ['__pycache__', 'node_modules', '.git', 'venv', 'env'])
+    
+    @staticmethod
+    def repo_filter(root: str, allowed_extensions=None):
+        """Filter function to identify valuable files for analysis
         
+        Args:
+            root: Root directory to scan
+            allowed_extensions: List of allowed extensions, or None for default
+        
+        Returns:
+            List of relative file paths
+        """
         docs = []
         for dirpath, dirnames, filenames in os.walk(root):
+            # Skip unwanted directories in-place
+            dirnames[:] = [d for d in dirnames if not RepoUtil.should_skip_directory(d)]
+            
             for filename in filenames:
-                if is_valuable_file(filename):
+                if RepoUtil.is_valuable_file(filename, allowed_extensions):
                     root_path = os.path.relpath(dirpath, root)
                     file_path = os.path.join(root_path, filename)
                     docs.append(file_path)
@@ -65,27 +102,102 @@ class RepoUtil:
         return len(tokens)
 
     @staticmethod
-    def file_content(root: str, file_path: str) -> str:
-        """Read and return the content of a file given its path relative to root"""
-        full_path = os.path.join(root, file_path)
+    def read_file_as_document(full_path: str, root: str = None, truncate_large: bool = False) -> Document:
+        """Read a file and return it as a Document object with metadata
+        
+        Args:
+            full_path: Full path to the file
+            root: Optional root directory for calculating relative path
+            truncate_large: If True, truncate content that exceeds MAX_TOKEN_LIMIT * 10
+        
+        Returns:
+            Document object with file content and metadata, or None if reading fails
+        """
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
+            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-                token_count = RepoUtil.token_count(content)
-                if token_count > RepoUtil.MAX_TOKEN_LIMIT * 10:
-                    # cutoff files that are too large
+            
+            token_count = RepoUtil.token_count(content)
+            
+            # Handle large files
+            if token_count > RepoUtil.MAX_TOKEN_LIMIT * 10:
+                if truncate_large:
                     logger.warning(f"File {full_path} is too large with {token_count} tokens, cutting off content that exceeds limit.")
                     content = content[:RepoUtil.MAX_TOKEN_LIMIT * 10]
                     token_count = RepoUtil.MAX_TOKEN_LIMIT * 10
-                return Document(
-                    text=content,
-                    meta_data={
-                        "source": full_path,
-                        "root": root,
-                        "real_path": file_path,
-                        "token_count": token_count
-                    }
-                )
+                else:
+                    logger.warning(f"File {full_path} is very large with {token_count} tokens")
+            
+            # Calculate paths and metadata
+            filename = os.path.basename(full_path)
+            ext = os.path.splitext(filename)[1].lower()
+            
+            meta_data = {
+                "source": full_path,
+                "full_path": full_path,
+                "filename": filename,
+                "extension": ext,
+                "token_count": token_count
+            }
+            
+            if root:
+                relative_path = os.path.relpath(full_path, root)
+                meta_data["root"] = root
+                meta_data["file_path"] = relative_path
+                meta_data["real_path"] = relative_path
+            
+            return Document(text=content, meta_data=meta_data)
+            
         except Exception as e:
             logger.error(f"Error reading file {full_path}: {e}")
-            return ""
+            return None
+
+    @staticmethod
+    def file_content(root: str, file_path: str) -> Document:
+        """Read and return the content of a file given its path relative to root
+        
+        Args:
+            root: Root directory
+            file_path: File path relative to root
+        
+        Returns:
+            Document object with file content, or empty string on error
+        """
+        full_path = os.path.join(root, file_path)
+        doc = RepoUtil.read_file_as_document(full_path, root=root, truncate_large=True)
+        return doc if doc else ""
+    
+    @staticmethod
+    def collect_documents(root: str, allowed_extensions=None):
+        """Collect documents from a folder and return Document objects
+        
+        Args:
+            root: Root directory to scan
+            allowed_extensions: List of allowed extensions, or None for default
+        
+        Returns:
+            List of Document objects with metadata
+        """
+        documents = []
+        
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Skip unwanted directories in-place
+            dirnames[:] = [d for d in dirnames if not RepoUtil.should_skip_directory(d)]
+            
+            for filename in filenames:
+                # Check extension
+                if not RepoUtil.is_valuable_file(filename, allowed_extensions):
+                    continue
+                
+                file_path = os.path.join(dirpath, filename)
+                
+                # Use the shared read function
+                doc = RepoUtil.read_file_as_document(file_path, root=root, truncate_large=False)
+                
+                if doc and doc.text.strip():  # Only add non-empty files
+                    # Add source_folder to metadata
+                    doc.meta_data["source_folder"] = root
+                    documents.append(doc)
+        
+        logger.info(f"Collected {len(documents)} documents from {root}")
+        return documents

@@ -1,5 +1,6 @@
 backend/.env
 backend/logs
+backend/data
 # all __pycache__ folders
 **/__pycache__/
 # all .pyc files

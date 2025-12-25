@@ -1,4 +1,5 @@
 import os
+import hashlib, re
 import requests
 import logging
 from const.const import Const
@@ -9,6 +10,7 @@ from copy import deepcopy
 from tqdm import tqdm
 from typing import Sequence
 from adalflow.components.data_process import TextSplitter
+from adalflow.core.db import LocalDB
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,39 @@ def check_ollama_model_exists(model_name: str, ollama_host: str = None) -> bool:
     
     return is_available
 
+def generate_db_name(folder_path: str) -> str:
+    """Generate a deterministic database name from folder path.
+    
+    Creates a name combining:
+    - Sanitized folder name (human-readable)
+    - Short hash of full path (ensures uniqueness)
+    
+    Args:
+        folder_path: Absolute path to the folder
+    
+    Returns:
+        Database name like 'DiagWiki_a1b2c3d4'
+    """
+    # Normalize path (resolve symlinks, remove trailing slashes)
+    normalized_path = os.path.normpath(os.path.abspath(folder_path))
+    
+    # Get folder name
+    folder_name = os.path.basename(normalized_path)
+    
+    # Sanitize folder name: keep only alphanumeric, hyphens, underscores
+    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', folder_name)
+    sanitized_name = re.sub(r'_+', '_', sanitized_name)  # Collapse multiple underscores
+    sanitized_name = sanitized_name.strip('_')  # Remove leading/trailing underscores
+    
+    # Generate short hash of full path for uniqueness (first 8 chars)
+    path_hash = hashlib.sha256(normalized_path.encode('utf-8')).hexdigest()[:8]
+    
+    # Combine: foldername_hash
+    db_name = f"{sanitized_name}_{path_hash}"
+    
+    logger.info(f"Generated db_name '{db_name}' for folder '{normalized_path}'")
+    return db_name
+
 class OllamaDocumentProcessor(DataComponent):
     """
     Process documents for Ollama embeddings by processing one document at a time.
@@ -147,3 +182,16 @@ class DataPipeline:
             self.embedder_transformer
         )
     
+    def transform_and_save(self, documents: Sequence[Document], persist_dir: str) -> LocalDB:
+        """Transform documents and save to the specified directory"""
+        db = LocalDB()
+        db.register_transformer(transformer=self.data_transformer, key="split_and_embed")
+        db.load(documents)
+        db.transform(key="split_and_embed")
+        
+        # Create directory and save to db.pkl file
+        os.makedirs(persist_dir, exist_ok=True)
+        db_file = os.path.join(persist_dir, "db.pkl")
+        db.save_state(filepath=db_file)
+        logger.info(f"Saved database to {db_file}")
+        return db

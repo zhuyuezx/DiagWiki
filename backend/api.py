@@ -1,12 +1,12 @@
 import os, logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from utils.repoUtil import RepoUtil
-from utils.dataPipeline import check_ollama_model_exists, get_all_ollama_models
-import requests
+from utils.dataPipeline import check_ollama_model_exists, get_all_ollama_models, DataPipeline, generate_db_name
 
 from const.config import Config, APP_NAME, APP_VERSION
 from const.const import Const
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +118,104 @@ async def list_available_models():
         "embedding_model_available": check_ollama_model_exists(embedding_model),
         "generation_model_available": check_ollama_model_exists(generation_model)
     }
+
+@app.post("/transform")
+async def transform_documents(
+    folder_path: str = Query(..., description="Path to folder containing documents to process"),
+    extensions: str = Query(None, description="Comma-separated file extensions (e.g., '.py,.md')")
+):
+    """
+    Transform documents from a folder: collect files, split text, generate embeddings, and save to LocalDB.
+    
+    Database name is automatically generated from the folder path for consistency.
+    
+    Args:
+        folder_path: Path to folder containing documents
+        extensions: Optional comma-separated file extensions to filter (default: all supported)
+    
+    Returns:
+        Statistics about the transformation process including the generated database name
+    """
+    try:
+        logger.info(f"Starting document transformation for folder: {folder_path}")
+        
+        # Validate folder exists
+        if not os.path.exists(folder_path):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {folder_path}")
+        
+        if not os.path.isdir(folder_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {folder_path}")
+        
+        # Generate database name from folder path
+        db_name = generate_db_name(folder_path)
+        
+        # Validate folder exists
+        if not os.path.exists(folder_path):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {folder_path}")
+        
+        if not os.path.isdir(folder_path):
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {folder_path}")
+        
+        # Parse extensions if provided
+        allowed_extensions = None
+        if extensions:
+            allowed_extensions = [ext.strip() for ext in extensions.split(',')]
+            logger.info(f"Filtering for extensions: {allowed_extensions}")
+        
+        # Step 1: Collect documents from folder using RepoUtil
+        logger.info("Collecting documents from folder...")
+        documents = RepoUtil.collect_documents(folder_path, allowed_extensions)
+        
+        if not documents:
+            raise HTTPException(status_code=400, detail="No documents found in folder")
+        
+        # Step 2: Initialize pipeline and transform
+        pipeline = DataPipeline()
+        logger.info("Initialized DataPipeline")
+        
+        # Step 3: Create database directory
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        db_dir = os.path.join(data_dir, db_name)
+        
+        logger.info(f"Transforming documents (split + embed)...")
+        db = pipeline.transform_and_save(documents, db_dir)
+        logger.info("Transformation completed")
+        
+        # Step 4: Get statistics
+        transformed_docs = db.get_transformed_data(key="split_and_embed")
+        logger.info(f"Created {len(transformed_docs)} document chunks")
+        
+        # Calculate statistics
+        stats = {
+            "status": "success",
+            "folder_path": folder_path,
+            "database_name": db_name,
+            "database_path": os.path.join(db_dir, "db.pkl"),
+            "original_document_count": len(documents),
+            "transformed_chunk_count": len(transformed_docs),
+            "chunks_with_embeddings": 0,
+            "embedding_sizes": {},
+            "file_types": {}
+        }
+        
+        # Analyze chunks
+        for doc in transformed_docs:
+            if hasattr(doc, 'vector') and doc.vector is not None:
+                stats["chunks_with_embeddings"] += 1
+                embedding_size = len(doc.vector)
+                stats["embedding_sizes"][embedding_size] = \
+                    stats["embedding_sizes"].get(embedding_size, 0) + 1
+            
+            # Count file types
+            if hasattr(doc, 'meta_data') and 'extension' in doc.meta_data:
+                ext = doc.meta_data['extension']
+                stats["file_types"][ext] = stats["file_types"].get(ext, 0) + 1
+        
+        logger.info(f"Transform completed: {stats['chunks_with_embeddings']}/{stats['transformed_chunk_count']} chunks with embeddings")
+        return stats
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during transformation: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Transformation failed: {str(e)}")
