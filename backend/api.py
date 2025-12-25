@@ -2,6 +2,8 @@ import os, logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from utils.repoUtil import RepoUtil
+from utils.dataPipeline import check_ollama_model_exists, get_all_ollama_models
+import requests
 
 from const.config import Config, APP_NAME, APP_VERSION
 from const.const import Const
@@ -101,3 +103,18 @@ async def get_file_content(
         return {"error": f"Could not read content of file '{full_path}'."}
 
     return {"file_path": full_path, "content": content}
+
+@app.get("/available_models")
+async def list_available_models():
+    """Get list of all available Ollama models"""
+    models = get_all_ollama_models()
+    embedding_model = Const.EMBEDDING_CONFIG['model_kwargs'].get('model', 'nomic-embed-text')
+    generation_model = Const.GENERATION_MODEL
+    
+    return {
+        "available_models": models,
+        "current_embedding_model": embedding_model,
+        "current_generation_model": generation_model,
+        "embedding_model_available": check_ollama_model_exists(embedding_model),
+        "generation_model_available": check_ollama_model_exists(generation_model)
+    }

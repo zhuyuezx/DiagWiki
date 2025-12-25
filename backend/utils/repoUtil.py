@@ -1,9 +1,14 @@
 import os
 import logging
 from const.const import Const
+from adalflow.core.types import Document
+import tiktoken
+
+logger = logging.getLogger(__name__)
 
 class RepoUtil:
     """Utility class for repository operations"""
+    MAX_TOKEN_LIMIT = 8192
 
     @staticmethod
     def build_tree(current_path):
@@ -47,16 +52,40 @@ class RepoUtil:
                     file_path = os.path.join(root_path, filename)
                     docs.append(file_path)
         
-        logging.info(f"Found {len(docs)} valuable files in repository.")
+        logger.info(f"Found {len(docs)} valuable files in repository.")
         return docs
     
+    @staticmethod
+    def token_count(text: str) -> int:
+        """Estimate token count for a given text
+        use ollama as default embedder
+        """
+        encoding = tiktoken.get_encoding("cl100k_base")
+        tokens = encoding.encode(text)
+        return len(tokens)
+
     @staticmethod
     def file_content(root: str, file_path: str) -> str:
         """Read and return the content of a file given its path relative to root"""
         full_path = os.path.join(root, file_path)
         try:
             with open(full_path, 'r', encoding='utf-8') as f:
-                return f.read()
+                content = f.read()
+                token_count = RepoUtil.token_count(content)
+                if token_count > RepoUtil.MAX_TOKEN_LIMIT * 10:
+                    # cutoff files that are too large
+                    logger.warning(f"File {full_path} is too large with {token_count} tokens, cutting off content that exceeds limit.")
+                    content = content[:RepoUtil.MAX_TOKEN_LIMIT * 10]
+                    token_count = RepoUtil.MAX_TOKEN_LIMIT * 10
+                return Document(
+                    text=content,
+                    meta_data={
+                        "source": full_path,
+                        "root": root,
+                        "real_path": file_path,
+                        "token_count": token_count
+                    }
+                )
         except Exception as e:
-            logging.error(f"Error reading file {full_path}: {e}")
+            logger.error(f"Error reading file {full_path}: {e}")
             return ""
