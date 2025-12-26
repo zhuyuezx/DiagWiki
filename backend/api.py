@@ -417,3 +417,205 @@ async def generate_wiki_page(request: WikiPageRequest = Body(...)):
     except Exception as e:
         logger.error(f"Error generating wiki page: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate wiki page: {str(e)}")
+
+
+# Pydantic models for two-step diagram API
+class DiagramSectionsRequest(BaseModel):
+    root_path: str = Field(..., description="Root path to the folder")
+    page_title: str = Field(..., description="Title of the page")
+    page_description: str = Field(..., description="Description of what the page should cover")
+    relevant_files: List[str] = Field(..., description="List of relevant file paths for this page")
+    language: str = Field("en", description="Language code")
+    page_id: Optional[str] = Field(None, description="Optional page ID for caching")
+
+
+class SectionDiagramRequest(BaseModel):
+    root_path: str = Field(..., description="Root path to the folder")
+    page_title: str = Field(..., description="Title of the overall page")
+    page_id: str = Field(..., description="Page ID (from step 1)")
+    section_id: str = Field(..., description="Section ID (from step 1)")
+    section_title: str = Field(..., description="Title of this section")
+    section_description: str = Field(..., description="Description of what this section covers")
+    diagram_type: str = Field(..., description="Type of Mermaid diagram (flowchart, sequence, class, etc.)")
+    key_concepts: List[str] = Field(..., description="List of key concepts to include in the diagram")
+    language: str = Field("en", description="Language code")
+
+
+@app.post("/identifyDiagramSections")
+async def identify_diagram_sections(request: DiagramSectionsRequest = Body(...)):
+    """
+    Step 1 of Two-Step Diagram API: Identify diagram sections for a page.
+    
+    This endpoint analyzes the page topic and codebase to identify 2-5 distinct sections
+    that should be represented as interactive diagrams. This is for a DIAGRAM-FIRST wiki
+    where diagrams ARE the main representation, not supplements to text.
+    
+    The endpoint:
+    1. Initializes RAG for the codebase
+    2. Performs semantic queries to understand the topic
+    3. Uses LLM to identify diagram-worthy sections
+    4. Returns section metadata (id, title, description, diagram_type, key_concepts)
+    
+    Frontend should:
+    1. Call this endpoint first to get section list
+    2. Display section titles/descriptions to user
+    3. Call /generateSectionDiagram for each section (can be done on-demand or in batch)
+    
+    Args:
+        request: DiagramSectionsRequest with page details
+        
+    Returns:
+        JSON with status and list of identified sections
+    """
+    try:
+        logger.info(f"Identifying diagram sections for: {request.page_title}")
+        
+        # Validate folder
+        if not os.path.exists(request.root_path):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
+        
+        # Use WikiGenerator for diagram section identification
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
+        
+        result = wiki_gen.identify_diagram_sections(
+            page_title=request.page_title,
+            page_description=request.page_description,
+            relevant_files=request.relevant_files,
+            language=request.language,
+            page_id=request.page_id,
+            use_cache=True
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error identifying diagram sections: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to identify diagram sections: {str(e)}")
+
+
+@app.post("/generateSectionDiagram")
+async def generate_section_diagram(request: SectionDiagramRequest = Body(...)):
+    """
+    Step 2 of Two-Step Diagram API: Generate diagram for a single section.
+    
+    This endpoint generates a comprehensive Mermaid diagram with node/edge explanations
+    for one specific section. This is for a DIAGRAM-FIRST wiki where the diagram + explanations
+    should fully explain the section without additional text.
+    
+    The endpoint:
+    1. Performs focused RAG queries for this section
+    2. Uses LLM to generate Mermaid diagram + node/edge explanations
+    3. Algorithmically parses the Mermaid code to extract structure
+    4. Combines LLM explanations with parsed nodes/edges
+    5. Returns interactive diagram data
+    
+    Frontend should:
+    1. Render the Mermaid diagram
+    2. Make nodes/edges clickable
+    3. Display explanations in tooltips/modals when clicked
+    
+    Args:
+        request: SectionDiagramRequest with section details from step 1
+        
+    Returns:
+        JSON with diagram (mermaid_code, description), nodes (with explanations), edges (with explanations)
+    """
+    try:
+        logger.info(f"Generating diagram for section: {request.section_title}")
+        
+        # Validate folder
+        if not os.path.exists(request.root_path):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
+        
+        # Use WikiGenerator for diagram generation
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
+        
+        result = wiki_gen.generate_section_diagram(
+            page_title=request.page_title,
+            page_id=request.page_id,
+            section_id=request.section_id,
+            section_title=request.section_title,
+            section_description=request.section_description,
+            diagram_type=request.diagram_type,
+            key_concepts=request.key_concepts,
+            language=request.language,
+            use_cache=True
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating section diagram: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate section diagram: {str(e)}")
+
+
+@app.post("/generateWikiPageWithDiagrams")
+async def generate_wiki_page_with_diagrams(request: WikiPageRequest = Body(...)):
+    """
+    COMBINED API: Generate complete wiki page with all diagrams in one call.
+    
+    ⚠️  RECOMMENDATION: Use the two-step API instead (/identifyDiagramSections + /generateSectionDiagram)
+    The two-step approach gives better control and allows:
+    - Progressive loading (show sections first, then load diagrams on-demand)
+    - Parallel diagram generation
+    - Better error handling per section
+    - More responsive UI
+    
+    This combined endpoint does both steps internally:
+    1. Step 1: Analyzes content and identifies 2-5 diagram sections
+    2. Step 2: Generates diagrams for ALL sections sequentially
+    3. Parses diagrams and combines with explanations
+    
+    For a DIAGRAM-FIRST wiki where diagrams ARE the main content.
+    
+    The output format enables:
+    - Clickable nodes with explanations
+    - Clickable edges with relationship descriptions
+    - Compilable Mermaid diagrams
+    - Frontend interaction support
+    
+    Args:
+        request: WikiPageRequest with page details and relevant files
+        
+    Returns:
+        Structured JSON containing:
+        - sections: List of ALL diagram sections (fully generated)
+        - Each section has: diagram (mermaid_code + metadata), nodes (with explanations), edges (with explanations)
+        - Cache information
+    """
+    try:
+        logger.info(f"Generating wiki page with diagrams: {request.page_title}")
+        
+        # Validate folder
+        if not os.path.exists(request.root_path):
+            raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
+        
+        # Use WikiGenerator for diagram-based generation
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
+        
+        # Generate page_id from request if available
+        page_id = getattr(request, 'page_id', None)
+        
+        result = wiki_gen.generate_page_with_diagrams(
+            page_title=request.page_title,
+            page_description=request.page_description,
+            relevant_files=request.relevant_files,
+            language=request.language,
+            page_id=page_id,
+            use_cache=True
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating wiki page with diagrams: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate wiki page with diagrams: {str(e)}")

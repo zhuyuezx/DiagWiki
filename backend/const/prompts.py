@@ -5,7 +5,82 @@ This module contains all prompt templates used for:
 - Wiki structure generation
 - Wiki page generation
 - RAG queries
+- Interactive diagram generation
 """
+
+# JSON Schemas for structured output enforcement
+
+DIAGRAM_SECTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "sections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "section_id": {
+                        "type": "string",
+                        "description": "Unique identifier for the section (lowercase, hyphenated)"
+                    },
+                    "section_title": {
+                        "type": "string",
+                        "description": "Clear, concise title for the section"
+                    },
+                    "section_description": {
+                        "type": "string",
+                        "description": "What this section explains (2-3 sentences)"
+                    },
+                    "diagram_type": {
+                        "type": "string",
+                        "enum": ["flowchart", "sequence", "class", "graph", "stateDiagram", "erDiagram"],
+                        "description": "Type of Mermaid diagram"
+                    },
+                    "key_concepts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Key concepts to include in the diagram"
+                    },
+                    "importance": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Importance level of this section"
+                    }
+                },
+                "required": ["section_id", "section_title", "section_description", "diagram_type", "key_concepts", "importance"]
+            }
+        }
+    },
+    "required": ["sections"]
+}
+
+SINGLE_DIAGRAM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "mermaid_code": {
+            "type": "string",
+            "description": "Complete Mermaid diagram code with proper syntax"
+        },
+        "diagram_description": {
+            "type": "string",
+            "description": "Brief 2-3 sentence explanation of what this diagram shows"
+        },
+        "node_explanations": {
+            "type": "object",
+            "description": "Map of node IDs to their explanations",
+            "additionalProperties": {
+                "type": "string"
+            }
+        },
+        "edge_explanations": {
+            "type": "object",
+            "description": "Map of edge keys (Source->Target) to their explanations",
+            "additionalProperties": {
+                "type": "string"
+            }
+        }
+    },
+    "required": ["mermaid_code", "diagram_description", "node_explanations", "edge_explanations"]
+}
 
 
 def get_language_name(language_code: str) -> str:
@@ -327,3 +402,238 @@ def build_page_analysis_queries(page_title: str, page_description: str) -> list:
         f"What are the data structures, classes, or APIs for {page_title}?",
         f"Show code examples and usage patterns for {page_title}."
     ]
+
+
+def build_diagram_sections_prompt(
+    page_title: str,
+    page_description: str,
+    rag_context: str,
+    language: str
+) -> str:
+    """
+    Build prompt to identify sections that should have diagrams.
+    
+    This is Step 1: Analyze content and identify diagram-worthy sections.
+    
+    IMPORTANT: This is for a diagram-first wiki where diagrams ARE the main representation.
+    The wiki is composed of sectioned interactive diagrams, not traditional text-based pages.
+    
+    Args:
+        page_title: Title of the page
+        page_description: Description of the page
+        rag_context: RAG-retrieved context
+        language: Target language code
+    
+    Returns:
+        Prompt string for LLM to identify diagram sections
+    """
+    language_name = get_language_name(language)
+    
+    prompt = f"""You are an expert technical writer creating a DIAGRAM-FIRST wiki for "{page_title}".
+
+🎯 CRITICAL CONCEPT: This wiki is MADE OF DIAGRAMS. Diagrams are the PRIMARY REPRESENTATION, not supplements.
+Each page consists of 2-5 interactive diagram sections that together fully explain the topic.
+
+PAGE TOPIC: {page_title}
+DESCRIPTION: {page_description}
+
+CONTEXT FROM CODEBASE:
+{rag_context}
+
+Your task is to break down "{page_title}" into 2-5 distinct diagram sections that together provide a complete understanding.
+
+IMPORTANT GUIDELINES:
+1. Each section represents ONE focused aspect that MUST be visualized as a diagram
+2. Together, these diagrams should fully explain {page_title} - no additional text pages needed
+3. Essential diagram types for technical concepts:
+   - System architecture / component relationships → flowchart or graph
+   - Data flow / process workflows → flowchart
+   - Class hierarchies / inheritance → classDiagram
+   - API call sequences / request-response patterns → sequence diagram
+   - State machines / lifecycle → stateDiagram
+   - Module dependencies → graph
+   - Database relationships → erDiagram
+   - Interaction patterns between components → sequence or flowchart
+
+4. Each section should be:
+   - Self-contained and focused on ONE aspect
+   - Fully expressible as a single Mermaid diagram
+   - Essential for understanding {page_title}
+
+5. MUST create 2-5 diagram sections (comprehensive but focused)
+
+Return your analysis in the following JSON format:
+
+{{
+  "sections": [
+    {{
+      "section_id": "unique-identifier",
+      "section_title": "Clear, concise title",
+      "section_description": "What this section explains (2-3 sentences)",
+      "diagram_type": "flowchart|sequence|class|graph|stateDiagram|erDiagram",
+      "key_concepts": ["concept1", "concept2", "concept3"],
+      "importance": "high|medium|low"
+    }}
+  ]
+}}
+
+IMPORTANT: Return ONLY valid JSON, no markdown code blocks, no explanations.
+Generate the analysis in {language_name} language.
+
+Analyze now:"""
+    
+    return prompt
+
+
+def build_single_diagram_prompt(
+    page_title: str,
+    section_title: str,
+    section_description: str,
+    diagram_type: str,
+    key_concepts: list,
+    rag_context: str,
+    retrieved_sources: str,
+    language: str
+) -> str:
+    """
+    Build prompt to generate a single focused Mermaid diagram for a specific section.
+    
+    This is Step 2: Generate one diagram for an identified section.
+    
+    IMPORTANT: This diagram is part of a diagram-first wiki where diagrams ARE the main content.
+    The diagram + explanations should be comprehensive enough to fully explain this section.
+    
+    Args:
+        page_title: Title of the overall page
+        section_title: Title of this specific section
+        section_description: Description of what this section covers
+        diagram_type: Type of Mermaid diagram to generate
+        key_concepts: List of key concepts to include
+        rag_context: RAG-retrieved context
+        retrieved_sources: Retrieved source code snippets
+        language: Target language code
+    
+    Returns:
+        Prompt string for LLM to generate diagram
+    """
+    language_name = get_language_name(language)
+    
+    # Diagram-specific instructions
+    diagram_instructions = {
+        "flowchart": """
+- Use vertical orientation (graph TD or graph TB)
+- Start with entry points, show decision nodes, end with outcomes
+- Use rectangles for processes, diamonds for decisions, rounded for start/end
+- Keep node labels concise (3-5 words max)
+- Show the logical flow from top to bottom""",
+        
+        "sequence": """
+- Define all participants clearly at the beginning
+- Use ->> for synchronous calls (solid arrows)
+- Use -->> for responses/returns (dashed arrows)
+- Add activation boxes with +/- where appropriate
+- Show the temporal sequence of interactions
+- Include alt/else for conditional flows, loop for iterations""",
+        
+        "class": """
+- Show main classes and their relationships
+- Include key methods and properties
+- Use inheritance (--|>) and composition (--o) correctly
+- Keep class definitions focused on important members
+- Show interfaces and abstract classes clearly""",
+        
+        "graph": """
+- Use TD (top-down) orientation for hierarchies
+- Use LR (left-right) for linear flows only if needed
+- Show clear relationships between nodes
+- Use different node shapes to indicate different types
+- Keep the layout clean and readable""",
+        
+        "stateDiagram": """
+- Show all important states
+- Clearly mark initial state with [*]
+- Show transitions with labeled arrows
+- Include conditional transitions where relevant
+- Mark final states""",
+        
+        "erDiagram": """
+- Show entities as tables
+- Include key attributes for each entity
+- Show relationships clearly (||--o{, etc.)
+- Label relationship cardinality
+- Focus on the logical data model"""
+    }
+    
+    specific_instructions = diagram_instructions.get(diagram_type, diagram_instructions["flowchart"])
+    
+    prompt = f"""You are an expert at creating clear, informative Mermaid diagrams for a DIAGRAM-FIRST WIKI.
+
+🎯 CRITICAL: This diagram is the PRIMARY CONTENT for this section, not a supplement.
+The wiki is composed of interactive diagrams with explanations - the diagrams ARE the documentation.
+
+CONTEXT:
+- Overall page: {page_title}
+- This section: {section_title}
+- Section focus: {section_description}
+- Diagram type: {diagram_type}
+- Key concepts to include: {', '.join(key_concepts)}
+
+CODEBASE CONTEXT:
+{rag_context}
+
+SOURCE CODE SNIPPETS:
+{retrieved_sources}
+
+Your task is to create a COMPREHENSIVE Mermaid {diagram_type} diagram that FULLY EXPLAINS this section.
+This is not just a visual aid - it's the main content!
+
+DIAGRAM REQUIREMENTS:
+{specific_instructions}
+
+CRITICAL RULES:
+1. Node IDs must be simple alphanumeric (e.g., API, Client, UserService, validateInput)
+2. Node labels should be clear and concise (use [Label] syntax)
+3. IMPORTANT: Use descriptive, meaningful node IDs that reflect their purpose
+   - Good: API, Client, Database, UserService, validateInput, processRequest
+   - Bad: A, B, C, Node1, Node2, temp, xyz
+4. Make the diagram COMPREHENSIVE - it must fully explain {section_title}
+5. Include 8-20 nodes (be thorough, this is the main content)
+6. Add meaningful edge labels where it adds clarity
+7. Ensure the diagram is syntactically correct Mermaid code
+8. Since this is the primary content, be detailed and complete
+
+IMPORTANT DIAGRAM QUALITY (CRITICAL FOR DIAGRAM-FIRST WIKI):
+- Every node should represent a real component/concept from the codebase
+- Relationships should accurately reflect the actual code structure
+- Use the RAG context and source snippets as your primary source of truth
+- The diagram MUST be comprehensive enough to understand the section WITHOUT additional text
+- Think: "Can someone understand this topic fully just from this diagram and explanations?"
+- The node and edge explanations will be displayed interactively when clicked
+
+Return your response in the following JSON format:
+
+{{
+  "mermaid_code": "graph TD\\n  Client[Client Request]\\n  API[API Layer]\\n  ...",
+  "diagram_description": "Brief 2-3 sentence explanation of what this diagram shows",
+  "node_explanations": {{
+    "Client": "Explanation of what this node represents and its role",
+    "API": "Explanation of the API layer's responsibilities"
+  }},
+  "edge_explanations": {{
+    "Client->API": "Explanation of this relationship/interaction",
+    "API->Database": "Explanation of this connection"
+  }}
+}}
+
+CRITICAL FORMATTING:
+- Return ONLY valid JSON (no markdown code blocks like ```json)
+- Escape newlines in mermaid_code as \\n
+- Ensure all quotes are properly escaped
+- Use the node IDs exactly as they appear in mermaid_code for explanations
+- For edge explanations, use the format: "SourceNode->TargetNode" or "SourceNode-->TargetNode"
+
+Generate the diagram in {language_name} language.
+
+Create the diagram now:"""
+    
+    return prompt
