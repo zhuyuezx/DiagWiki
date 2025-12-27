@@ -491,7 +491,6 @@ Analyze now:"""
 
 
 def build_single_diagram_prompt(
-    page_title: str,
     section_title: str,
     section_description: str,
     diagram_type: str,
@@ -509,7 +508,6 @@ def build_single_diagram_prompt(
     The diagram + explanations should be comprehensive enough to fully explain this section.
     
     Args:
-        page_title: Title of the overall page
         section_title: Title of this specific section
         section_description: Description of what this section covers
         diagram_type: Type of Mermaid diagram to generate
@@ -600,8 +598,7 @@ def build_single_diagram_prompt(
 The wiki is composed of interactive diagrams with explanations - the diagrams ARE the documentation.
 
 CONTEXT:
-- Overall page: {page_title}
-- This section: {section_title}
+- Section: {section_title}
 - Section focus: {section_description}
 - Diagram type: {diagram_type}
 - Key concepts to include: {', '.join(key_concepts)}
@@ -671,5 +668,48 @@ CRITICAL FORMATTING:
 Generate the diagram in {language_name} language.
 
 Create the diagram now:"""
+    
+    return prompt
+
+def build_wiki_question_prompt(
+    question: str,
+    wiki_context: str,
+    codebase_context: str
+) -> str:
+    """
+    Build prompt for answering questions about the wiki using both wiki and codebase context.
+    
+    This combines generated wiki content (diagram explanations) with relevant codebase snippets
+    to provide comprehensive answers without information loss.
+    
+    Args:
+        question: User's question about the wiki
+        wiki_context: Context from generated wiki (diagrams, explanations)
+        codebase_context: Context from actual source code
+    
+    Returns:
+        Prompt string for LLM to answer the question
+    """
+    prompt = f"""You are a helpful technical assistant answering questions about a codebase wiki.
+
+You have access to TWO sources of information:
+
+1. GENERATED WIKI CONTENT (high-level explanations and diagrams):
+{wiki_context}
+
+2. SOURCE CODE CONTEXT (actual implementation details):
+{codebase_context}
+
+USER QUESTION: {question}
+
+Instructions:
+- Use the WIKI CONTENT for high-level understanding and structure
+- Use the SOURCE CODE for implementation details and specifics
+- Combine both sources to give a complete, accurate answer
+- If the wiki and code contradict, trust the code (wiki may be outdated)
+- If information is missing from both sources, clearly state what you don't know
+- Be clear, concise, and technical
+
+Answer:"""
     
     return prompt
