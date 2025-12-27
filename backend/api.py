@@ -422,11 +422,7 @@ async def generate_wiki_page(request: WikiPageRequest = Body(...)):
 # Pydantic models for two-step diagram API
 class DiagramSectionsRequest(BaseModel):
     root_path: str = Field(..., description="Root path to the folder")
-    page_title: str = Field(..., description="Title of the page")
-    page_description: str = Field(..., description="Description of what the page should cover")
-    relevant_files: List[str] = Field(..., description="List of relevant file paths for this page")
     language: str = Field("en", description="Language code")
-    page_id: Optional[str] = Field(None, description="Optional page ID for caching")
 
 
 class SectionDiagramRequest(BaseModel):
@@ -444,31 +440,35 @@ class SectionDiagramRequest(BaseModel):
 @app.post("/identifyDiagramSections")
 async def identify_diagram_sections(request: DiagramSectionsRequest = Body(...)):
     """
-    Step 1 of Two-Step Diagram API: Identify diagram sections for a page.
+    Step 1 of Diagram-First Wiki API: Identify diagram sections for the codebase.
     
-    This endpoint analyzes the page topic and codebase to identify 2-5 distinct sections
-    that should be represented as interactive diagrams. This is for a DIAGRAM-FIRST wiki
-    where diagrams ARE the main representation, not supplements to text.
+    This is for a DIAGRAM-FIRST WIKI where the wiki IS MADE OF DIAGRAMS.
+    Diagrams are NOT supplements to text - they ARE the primary content.
+    
+    The system automatically analyzes the codebase and identifies 2-5 key aspects
+    that should be visualized as interactive diagrams.
     
     The endpoint:
-    1. Initializes RAG for the codebase
-    2. Performs semantic queries to understand the topic
-    3. Uses LLM to identify diagram-worthy sections
-    4. Returns section metadata (id, title, description, diagram_type, key_concepts)
+    1. Analyzes the codebase structure using RAG
+    2. Identifies 2-5 distinct aspects that should each be a diagram
+    3. Returns section metadata (id, title, description, diagram_type, key_concepts)
     
-    Frontend should:
-    1. Call this endpoint first to get section list
-    2. Display section titles/descriptions to user
-    3. Call /generateSectionDiagram for each section (can be done on-demand or in batch)
+    Each section becomes an interactive diagram that explains one focused aspect.
+    Together, these diagrams form a complete visual overview of the codebase.
+    
+    Frontend workflow:
+    1. Call this endpoint → get back 2-5 diagram sections
+    2. Call /generateSectionDiagram for each section → get interactive diagrams
+    3. Display all diagrams as a "diagram page" - that's the wiki!
     
     Args:
-        request: DiagramSectionsRequest with page details
+        request: DiagramSectionsRequest with root_path and language
         
     Returns:
-        JSON with status and list of identified sections
+        JSON with status and list of 2-5 diagram sections to generate
     """
     try:
-        logger.info(f"Identifying diagram sections for: {request.page_title}")
+        logger.info(f"Identifying diagram sections for codebase: {request.root_path}")
         
         # Validate folder
         if not os.path.exists(request.root_path):
@@ -479,11 +479,7 @@ async def identify_diagram_sections(request: DiagramSectionsRequest = Body(...))
         wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
         
         result = wiki_gen.identify_diagram_sections(
-            page_title=request.page_title,
-            page_description=request.page_description,
-            relevant_files=request.relevant_files,
             language=request.language,
-            page_id=request.page_id,
             use_cache=True
         )
         

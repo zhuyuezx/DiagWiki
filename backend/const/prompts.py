@@ -405,23 +405,21 @@ def build_page_analysis_queries(page_title: str, page_description: str) -> list:
 
 
 def build_diagram_sections_prompt(
-    page_title: str,
-    page_description: str,
+    repo_name: str,
     rag_context: str,
     language: str
 ) -> str:
     """
-    Build prompt to identify sections that should have diagrams.
+    Build prompt to identify diagram sections for a codebase.
     
-    This is Step 1: Analyze content and identify diagram-worthy sections.
+    This is Step 1: Analyze codebase and identify diagram-worthy sections.
     
     IMPORTANT: This is for a diagram-first wiki where diagrams ARE the main representation.
-    The wiki is composed of sectioned interactive diagrams, not traditional text-based pages.
+    The wiki is composed of interactive diagrams that explain the codebase visually.
     
     Args:
-        page_title: Title of the page
-        page_description: Description of the page
-        rag_context: RAG-retrieved context
+        repo_name: Name of the repository/codebase
+        rag_context: RAG-retrieved context from codebase analysis
         language: Target language code
     
     Returns:
@@ -429,23 +427,24 @@ def build_diagram_sections_prompt(
     """
     language_name = get_language_name(language)
     
-    prompt = f"""You are an expert technical writer creating a DIAGRAM-FIRST wiki for "{page_title}".
+    prompt = f"""You are an expert technical writer creating a DIAGRAM-FIRST wiki for the "{repo_name}" codebase.
 
 🎯 CRITICAL CONCEPT: This wiki is MADE OF DIAGRAMS. Diagrams are the PRIMARY REPRESENTATION, not supplements.
-Each page consists of 2-5 interactive diagram sections that together fully explain the topic.
+You will analyze this codebase and identify the key aspects that should be visualized as interactive diagrams.
 
-PAGE TOPIC: {page_title}
-DESCRIPTION: {page_description}
-
-CONTEXT FROM CODEBASE:
+CODEBASE CONTEXT:
 {rag_context}
 
-Your task is to break down "{page_title}" into 2-5 distinct diagram sections that together provide a complete understanding.
+Your task is to identify distinct diagram sections that together provide a complete visual understanding of this codebase.
 
 IMPORTANT GUIDELINES:
-1. Each section represents ONE focused aspect that MUST be visualized as a diagram
-2. Together, these diagrams should fully explain {page_title} - no additional text pages needed
-3. Essential diagram types for technical concepts:
+1. Analyze the COMPLEXITY and SCOPE of the codebase to determine the appropriate number of diagrams
+   - Simple projects (single module, <5 files): 2-3 diagrams
+   - Medium projects (multiple modules, 5-20 files): 3-5 diagrams  
+   - Complex projects (layered architecture, >20 files): 5-8 diagrams
+   - Let the codebase structure guide you - don't force a fixed number
+
+2. Each diagram section represents ONE focused aspect that MUST be visualized
    - System architecture / component relationships → flowchart or graph
    - Data flow / process workflows → flowchart
    - Class hierarchies / inheritance → classDiagram
@@ -455,12 +454,18 @@ IMPORTANT GUIDELINES:
    - Database relationships → erDiagram
    - Interaction patterns between components → sequence or flowchart
 
-4. Each section should be:
+3. Each section should be:
    - Self-contained and focused on ONE aspect
    - Fully expressible as a single Mermaid diagram
-   - Essential for understanding {page_title}
+   - Essential for understanding this codebase
 
-5. MUST create 2-5 diagram sections (comprehensive but focused)
+4. 🎯 CRITICAL: Use SPECIFIC component/class/function names from the CODEBASE CONTEXT above
+   - BAD: "API calls between client and server" (too generic)
+   - GOOD: "FastAPI requests through WikiGenerator to Ollama LLM" (specific to this codebase)
+   - Include actual class names, module names, function names from the context
+   - Make section_description reference concrete components, not abstract concepts
+
+5. Together, these diagrams should fully explain "{repo_name}" - no additional text needed
 
 Return your analysis in the following JSON format:
 
@@ -469,7 +474,7 @@ Return your analysis in the following JSON format:
     {{
       "section_id": "unique-identifier",
       "section_title": "Clear, concise title",
-      "section_description": "What this section explains (2-3 sentences)",
+      "section_description": "What this section explains, using SPECIFIC component names from the codebase (2-3 sentences)",
       "diagram_type": "flowchart|sequence|class|graph|stateDiagram|erDiagram",
       "key_concepts": ["concept1", "concept2", "concept3"],
       "importance": "high|medium|low"

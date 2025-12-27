@@ -46,10 +46,12 @@ class WikiCache:
         self.wiki_dir = os.path.join(db_path, "wiki")
         self.structure_file = os.path.join(self.wiki_dir, "structure.xml")
         self.pages_dir = os.path.join(self.wiki_dir, "pages")
+        self.diagrams_dir = os.path.join(self.wiki_dir, "diagrams")
         self.metadata_file = os.path.join(self.wiki_dir, "metadata.json")
         
         # Create directories if they don't exist
         os.makedirs(self.pages_dir, exist_ok=True)
+        os.makedirs(self.diagrams_dir, exist_ok=True)
     
     def save_structure(self, structure: str) -> str:
         """Save wiki structure to cache."""
@@ -128,6 +130,19 @@ class WikiCache:
             with open(self.metadata_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return {}
+    
+    def get_page_metadata(self, page_id: str) -> Optional[Dict]:
+        """
+        Get metadata for a specific page.
+        
+        Args:
+            page_id: Page identifier
+        
+        Returns:
+            Page metadata dict or None if not found
+        """
+        all_metadata = self._load_metadata()
+        return all_metadata.get(page_id, None)
 
 
 class WikiGenerator:
@@ -471,37 +486,33 @@ class WikiGenerator:
     
     def identify_diagram_sections(
         self,
-        page_title: str,
-        page_description: str,
-        relevant_files: List[str],
         language: str = "en",
-        page_id: str = None,
         use_cache: bool = True
     ) -> Dict:
         """
-        Step 1: Identify diagram sections for a page (Two-Step API - Part 1).
+        Step 1: Identify diagram sections for the codebase (Diagram-First Wiki).
         
-        This is the first step of diagram-first wiki generation.
-        Analyzes the topic and returns 2-5 sections that should have diagrams.
+        This is for a DIAGRAM-FIRST WIKI - diagrams ARE the content, not supplements.
+        Analyzes the codebase and identifies diagram sections that together explain it.
+        The number of sections is determined by the LLM based on codebase complexity.
+        
+        The system automatically determines what aspects of the codebase should be visualized
+        based on RAG analysis of the code structure, functionality, and architecture.
         
         Args:
-            page_title: Title of the page
-            page_description: Description of what the page should cover
-            relevant_files: List of relevant file paths (hints)
             language: Target language code
-            page_id: Optional page ID for caching
             use_cache: Whether to use cached sections if available
         
         Returns:
             Dict with status and identified sections list
         """
-        # Generate page_id if not provided
-        if page_id is None:
-            page_id = page_title.lower().replace(' ', '_').replace('/', '_')
+        # Use repo name as page_id for caching
+        repo_name = os.path.basename(self.root_path)
+        page_id = repo_name.lower().replace(' ', '_').replace('/', '_')
         
         # Check cache first
         if use_cache:
-            cache_file = os.path.join(self.cache.pages_dir, f"{page_id}_sections.json")
+            cache_file = os.path.join(self.cache.diagrams_dir, f"{page_id}_sections.json")
             if os.path.exists(cache_file):
                 logger.info(f"✅ Using cached diagram sections from: {cache_file}")
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -514,10 +525,10 @@ class WikiGenerator:
         self.initialize_rag()
         
         # Generate RAG queries
-        rag_queries = build_page_analysis_queries(page_title, page_description)
+        rag_queries = build_page_analysis_queries(repo_name, "Identify key components and workflows suitable for diagrammatic representation.")
         
         # Perform RAG queries
-        logger.info(f"Performing {len(rag_queries)} RAG queries for: {page_title}")
+        logger.info(f"Performing {len(rag_queries)} RAG queries for: {repo_name}")
         rag_results = []
         
         for query in rag_queries:
@@ -545,8 +556,7 @@ class WikiGenerator:
         # Step 1: Identify diagram sections
         logger.info("Identifying diagram sections...")
         sections_prompt = build_diagram_sections_prompt(
-            page_title=page_title,
-            page_description=page_description,
+            repo_name=repo_name,
             rag_context=rag_context,
             language=language
         )
@@ -584,13 +594,12 @@ class WikiGenerator:
             identified_sections = []
         
         # Cache the result
-        cache_file = os.path.join(self.cache.pages_dir, f"{page_id}_sections.json")
+        cache_file = os.path.join(self.cache.diagrams_dir, f"{page_id}_sections.json")
         
         result = {
             "status": "success",
             "page_id": page_id,
-            "page_title": page_title,
-            "page_description": page_description,
+            "repo_name": repo_name,
             "language": language,
             "sections": identified_sections,
             "rag_queries_performed": len(rag_queries),
@@ -639,8 +648,8 @@ class WikiGenerator:
         """
         # Check cache first
         if use_cache:
-            cache_file = os.path.join(self.cache.pages_dir, f"{page_id}_{section_id}_diagram.json")
-            mermaid_file = os.path.join(self.cache.pages_dir, f"{page_id}_{section_id}_diagram.mmd")
+            cache_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.json")
+            mermaid_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.mmd")
             if os.path.exists(cache_file):
                 logger.info(f"✅ Using cached diagram from: {cache_file}")
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -772,8 +781,9 @@ class WikiGenerator:
                         "explanation": edge_explanations.get(edge_key, "")
                     }
                 
-                # Prepare cache file path
-                cache_file = os.path.join(self.cache.pages_dir, f"{page_id}_{section_id}_diagram.json")
+                # Prepare cache file paths
+                cache_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.json")
+                mermaid_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.mmd")
                 
                 result = {
                     "status": "success",
@@ -979,7 +989,7 @@ class WikiGenerator:
             logger.info(f"Generating diagram for: {section_title}")
             
             # Check if this diagram is already cached (new format: diag_{section_id})
-            section_cache_file = os.path.join(self.cache.pages_dir, f"diag_{section_id}.json")
+            section_cache_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.json")
             if use_cache and os.path.exists(section_cache_file):
                 logger.info(f"✅ Using cached diagram for section: {section_title}")
                 try:

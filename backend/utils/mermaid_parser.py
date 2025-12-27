@@ -342,32 +342,3 @@ def validate_mermaid_syntax(mermaid_code: str) -> Tuple[bool, str]:
         
     except Exception as e:
         return False, f"Parsing error: {str(e)}"
-
-
-if __name__ == "__main__":
-    # Test the parser
-    test_diagram = """graph TD
-    Client[Client Request] --> API[API Layer]
-    API --> Cache{Cache Hit?}
-    Cache -->|Yes| Return[Return Cached]
-    Cache -->|No| Generate[Generate New]
-    Generate --> LLM[LLM Call]
-    """
-    
-    result = parse_mermaid_diagram(test_diagram)
-    print("Diagram Type:", result["diagram_type"])
-    print("\nNodes:")
-    for node_id, node_data in result["nodes"].items():
-        print(f"  {node_id}: {node_data['label']} ({node_data['shape']})")
-    
-    print("\nEdges:")
-    for edge in result["edges"]:
-        label = f" [{edge['label']}]" if edge['label'] else ""
-        print(f"  {edge['source']} -> {edge['target']}{label}")
-    
-    print("\nNode List:", result["node_list"])
-    print("Edge List:", result["edge_list"])
-    
-    # Test validation
-    is_valid, message = validate_mermaid_syntax(test_diagram)
-    print(f"\nValidation: {is_valid} - {message}")
