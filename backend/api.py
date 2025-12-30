@@ -1,4 +1,6 @@
 import os, logging, json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +15,9 @@ from const.const import Const
 
 
 logger = logging.getLogger(__name__)
+
+# Create a thread pool executor for blocking operations
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 @asynccontextmanager
@@ -498,13 +503,13 @@ async def identify_diagram_sections(request: DiagramSectionsRequest = Body(...))
         if not os.path.exists(request.root_path):
             raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
         
-        # Use WikiGenerator for diagram section identification
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
-        
-        result = wiki_gen.identify_diagram_sections(
-            language=request.language,
-            use_cache=True
+        # Run blocking operation in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor,
+            _identify_sections_sync,
+            request.root_path,
+            request.language
         )
         
         return result
@@ -514,6 +519,16 @@ async def identify_diagram_sections(request: DiagramSectionsRequest = Body(...))
     except Exception as e:
         logger.error(f"Error identifying diagram sections: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to identify diagram sections: {str(e)}")
+
+
+def _identify_sections_sync(root_path: str, language: str):
+    """Synchronous function to run in thread pool."""
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    wiki_gen = WikiGenerator(root_path=root_path, data_dir=data_dir)
+    return wiki_gen.identify_diagram_sections(
+        language=language,
+        use_cache=True
+    )
 
 
 @app.post("/generateSectionDiagram")
@@ -550,18 +565,18 @@ async def generate_section_diagram(request: SectionDiagramRequest = Body(...)):
         if not os.path.exists(request.root_path):
             raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
         
-        # Use WikiGenerator for diagram generation
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
-        
-        result = wiki_gen.generate_section_diagram(
-            section_id=request.section_id,
-            section_title=request.section_title,
-            section_description=request.section_description,
-            diagram_type=request.diagram_type,
-            key_concepts=request.key_concepts,
-            language=request.language,
-            use_cache=True
+        # Run blocking operation in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor,
+            _generate_diagram_sync,
+            request.root_path,
+            request.section_id,
+            request.section_title,
+            request.section_description,
+            request.diagram_type,
+            request.key_concepts,
+            request.language
         )
         
         return result
@@ -571,6 +586,29 @@ async def generate_section_diagram(request: SectionDiagramRequest = Body(...)):
     except Exception as e:
         logger.error(f"Error generating section diagram: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate section diagram: {str(e)}")
+
+
+def _generate_diagram_sync(
+    root_path: str,
+    section_id: str,
+    section_title: str,
+    section_description: str,
+    diagram_type: str,
+    key_concepts: list,
+    language: str
+):
+    """Synchronous function to run in thread pool."""
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    wiki_gen = WikiGenerator(root_path=root_path, data_dir=data_dir)
+    return wiki_gen.generate_section_diagram(
+        section_id=section_id,
+        section_title=section_title,
+        section_description=section_description,
+        diagram_type=diagram_type,
+        key_concepts=key_concepts,
+        language=language,
+        use_cache=True
+    )
 
 
 # Pydantic models for wiki problem analysis and modification
