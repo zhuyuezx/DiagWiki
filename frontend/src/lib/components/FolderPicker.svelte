@@ -45,6 +45,7 @@
 		// Check each section to see if it's already cached
 		for (const section of sections) {
 			try {
+				console.log(`Checking cache for section: ${section.section_title}`);
 				const diagram = await generateSectionDiagram(folderPath, section);
 				// If successful, it's cached
 				cachedSections.push(section);

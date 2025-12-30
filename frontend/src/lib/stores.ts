@@ -46,7 +46,6 @@ export const rightPanelOpen = writable<boolean>(true);
 
 // Loading states
 export const isAnalyzing = writable<boolean>(false);
-export const isLoadingDiagram = writable<boolean>(false);
 
 // Track which diagrams have been generated (to show loading states)
 export const generatedDiagrams = writable<Set<string>>(new Set());
