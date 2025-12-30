@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, availableSections } from '$lib/stores';
+	import { currentProject, identifiedSections } from '$lib/stores';
 	import { queryWikiProblem, generateSectionDiagram } from '$lib/api';
 
 	let query = '';
@@ -75,8 +75,8 @@
 					if (response.ok) {
 						const diagram = await response.json();
 						
-						// Add new section to availableSections
-						availableSections.update(sections => {
+						// Add new section to identifiedSections
+						identifiedSections.update(sections => {
 							if (!sections.some(s => s.section_id === diagram.section_id)) {
 								return [...sections, {
 									section_id: diagram.section_id,

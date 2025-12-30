@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, openTabs, leftPanelOpen, rightPanelOpen, activeDiagram } from '$lib/stores';
+	import { currentProject, leftPanelOpen, rightPanelOpen, activeDiagram } from '$lib/stores';
 	import FolderPicker from '$lib/components/FolderPicker.svelte';
 	import DiagramTabs from '$lib/components/DiagramTabs.svelte';
 	import LeftPanel from '$lib/components/LeftPanel.svelte';
@@ -9,8 +9,6 @@
 
 	let leftPanelWidth = 250;
 	let rightPanelWidth = 300;
-	let isResizingLeft = false;
-	let isResizingRight = false;
 
 	function toggleLeftPanel() {
 		leftPanelOpen.update((open) => !open);

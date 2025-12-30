@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { availableSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache } from '$lib/stores';
+	import { identifiedSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache } from '$lib/stores';
 	import { generateSectionDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
 	import TreeNode from './TreeNode.svelte';
@@ -68,7 +68,7 @@
 	}
 
 	// Group sections by diagram type
-	$: groupedSections = $availableSections.reduce((acc, section) => {
+	$: groupedSections = $identifiedSections.reduce((acc, section) => {
 		const type = section.diagram_type || 'other';
 		if (!acc[type]) {
 			acc[type] = [];
@@ -169,7 +169,7 @@
 		</div>
 		{#if viewMode === 'diagrams'}
 			<p class="text-xs text-gray-500">
-				{$availableSections.length} diagram{$availableSections.length !== 1 ? 's' : ''}
+				{$identifiedSections.length} diagram{$identifiedSections.length !== 1 ? 's' : ''}
 			</p>
 		{:else}
 			<p class="text-xs text-gray-500">
@@ -199,7 +199,7 @@
 			</div>
 		{:else}
 			<!-- Diagram View -->
-			{#if $availableSections.length === 0}
+			{#if $identifiedSections.length === 0}
 				<div class="text-center text-gray-500 text-sm py-8 px-4">
 					<svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { currentProject, projectHistory, addToHistory, isAnalyzing, availableSections, openDiagramTab, generatedDiagrams, diagramCache } from '$lib/stores';
+	import { currentProject, projectHistory, addToHistory, isAnalyzing, identifiedSections, openDiagramTab, generatedDiagrams, diagramCache, generateRequestSent, availableSections } from '$lib/stores';
 	import { identifyDiagramSections, generateSectionDiagram } from '$lib/api';
+	import type { WikiSection } from '$lib/types';
 
 	let folderPath = '';
 	let error = '';
-	let generatingQueue: Set<string> = new Set();
 
 	async function handleAnalyze() {
 		if (!folderPath.trim()) {
@@ -16,10 +16,10 @@
 		isAnalyzing.set(true);
 
 		try {
-			const result = await identifyDiagramSections(folderPath);
 			currentProject.set(folderPath);
-			availableSections.set(result.sections);
 			addToHistory(folderPath);
+			const result = await identifyDiagramSections(folderPath);
+			identifiedSections.set(result.sections);
 			
 			// Navigate to main view immediately
 			isAnalyzing.set(false);
@@ -44,10 +44,31 @@
 		
 		// Check each section to see if it's already cached
 		for (const section of sections) {
+			if ($availableSections.get(folderPath)?.has(section.section_id)) {
+				// Already available
+				cachedSections.push(section);
+				continue;
+			}
+			if ($generateRequestSent.get(folderPath)?.has(section.section_id)) {
+				// Request already sent for generation
+				uncachedSections.push(section);
+				continue;
+			}
 			try {
-				console.log(`Checking cache for section: ${section.section_title}`);
+				generateRequestSent.update(map => {
+					const requestSent = map.get(folderPath) || new Set<string>();
+					requestSent.add(section.section_id);
+					map.set(folderPath, requestSent);
+					return map;
+				});
 				const diagram = await generateSectionDiagram(folderPath, section);
-				// If successful, it's cached
+
+				availableSections.update(map => {
+					const sectionsSet = map.get(folderPath) || new Set<WikiSection>();
+					sectionsSet.add(section);
+					map.set(folderPath, sectionsSet);
+					return map;
+				});
 				cachedSections.push(section);
 				
 				// Add to frontend cache
@@ -71,62 +92,9 @@
 				// Not cached or error - needs generation
 				uncachedSections.push(section);
 			}
-			// Small delay to avoid overwhelming
-			await new Promise(resolve => setTimeout(resolve, 100));
 		}
 		
 		console.log(`Found ${cachedSections.length} cached, ${uncachedSections.length} need generation`);
-		
-		// Generate any uncached diagrams
-		if (uncachedSections.length > 0) {
-			generateDiagramsInBackground(uncachedSections);
-		}
-	}
-
-	async function generateDiagramsInBackground(sections: any[]) {
-		console.log(`Starting background generation of ${sections.length} diagrams...`);
-		
-		// Mark all as queued
-		generatingQueue = new Set(sections.map(s => s.section_id));
-		
-		// Generate diagrams one by one
-		for (let i = 0; i < sections.length; i++) {
-			const section = sections[i];
-			try {
-				console.log(`Generating diagram ${i + 1}/${sections.length}: ${section.section_title}`);
-				const diagram = await generateSectionDiagram(folderPath, section);
-				
-				// Remove from queue
-				generatingQueue.delete(section.section_id);
-				generatingQueue = generatingQueue;
-				
-				// Mark as generated in the store (for all diagrams, not just the first)
-				generatedDiagrams.update(set => {
-					const newSet = new Set(set);
-					newSet.add(section.section_id);
-					return newSet;
-				});
-				console.log(`Diagram ${section.section_id} marked as generated`);
-				
-				// Open the first diagram automatically
-				if (i === 0) {
-					openDiagramTab(diagram);
-				}
-			} catch (error) {
-				console.error(`Failed to generate diagram for ${section.section_title}:`, error);
-				generatingQueue.delete(section.section_id);
-				generatingQueue = generatingQueue;
-				// Continue with next section even if one fails
-			}
-			
-			// Small delay between requests to avoid overwhelming the server
-			if (i < sections.length - 1) {
-				await new Promise(resolve => setTimeout(resolve, 500));
-			}
-		}
-		
-		console.log('All diagrams generated and cached');
-		generatingQueue = new Set();
 	}
 
 	function handleSelectHistory(path: string) {

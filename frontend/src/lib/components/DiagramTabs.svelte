@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, availableSections, openTabs, activeTabIndex, closeDiagramTab, openDiagramTab } from '$lib/stores';
+	import { currentProject, identifiedSections, openTabs, activeTabIndex, closeDiagramTab, openDiagramTab } from '$lib/stores';
 	import QueryDialog from './QueryDialog.svelte';
 	import { onMount } from 'svelte';
 
@@ -7,7 +7,7 @@
 
 	function handleGoHome() {
 		currentProject.set(null);
-		availableSections.set([]);
+		identifiedSections.set([]);
 		openTabs.set([]);
 		activeTabIndex.set(0);
 	}

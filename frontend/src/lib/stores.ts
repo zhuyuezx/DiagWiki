@@ -23,7 +23,10 @@ projectHistory.subscribe((value) => {
 });
 
 // Available diagram sections from analysis
-export const availableSections = writable<WikiSection[]>([]);
+export const identifiedSections = writable<WikiSection[]>([]);
+
+export const generateRequestSent = writable<Map<string, Set<string>>>(new Map());
+export const availableSections = writable<Map<string, Set<WikiSection>>>(new Map());
 
 // Currently open diagram tabs
 export const openTabs = writable<DiagramSection[]>([]);
@@ -42,7 +45,7 @@ export const selectedElement = writable<{
 export const leftPanelOpen = writable<boolean>(true);
 
 // Right panel state (explanation) - open by default
-export const rightPanelOpen = writable<boolean>(true);
+export const rightPanelOpen = writable<boolean>(false);
 
 // Loading states
 export const isAnalyzing = writable<boolean>(false);

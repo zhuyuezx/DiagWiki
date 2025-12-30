@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, availableSections, generatedDiagrams, diagramCache } from '$lib/stores';
+	import { currentProject, identifiedSections, generatedDiagrams, diagramCache } from '$lib/stores';
 	import { generateSectionDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
 
@@ -20,7 +20,7 @@
 		let section: WikiSection | undefined;
 		
 		if (selectedSectionId) {
-			section = $availableSections.find(s => s.section_id === selectedSectionId);
+			section = $identifiedSections.find(s => s.section_id === selectedSectionId);
 		}
 		
 		if (!section) {
@@ -58,9 +58,9 @@
 					return newCache;
 				});
 				
-				// Add the custom section to availableSections if it's new
+				// Add the custom section to identifiedSections if it's new
 				if (sectionToGenerate.section_id.startsWith('custom_')) {
-					availableSections.update(sections => {
+					identifiedSections.update(sections => {
 						if (!sections.some(s => s.section_id === sectionToGenerate.section_id)) {
 							const updatedSection = {
 								...sectionToGenerate,
@@ -148,7 +148,7 @@
 						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
 					>
 						<option value="">New custom diagram</option>
-						{#each $availableSections as section}
+						{#each $identifiedSections as section}
 							<option value={section.section_id}>{section.section_title}</option>
 						{/each}
 					</select>
