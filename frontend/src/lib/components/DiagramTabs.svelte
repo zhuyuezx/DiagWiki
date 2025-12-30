@@ -8,6 +8,8 @@
 	function handleGoHome() {
 		currentProject.set(null);
 		availableSections.set([]);
+		openTabs.set([]);
+		activeTabIndex.set(0);
 	}
 
 	function handleTabClick(index: number) {

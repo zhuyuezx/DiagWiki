@@ -14,11 +14,10 @@
 
 	let viewMode: ViewMode = 'diagrams';
 	let loadingSection: string | null = null;
-	let expandedGroups: Set<string> = new Set(['all']); // Start with 'all' expanded
+	let expandedGroups: Set<string> = new Set(['graph', 'flowchart', 'sequence', 'class', 'stateDiagram', 'erDiagram']);
 	let expandedFolders: Set<string> = new Set(); // For folder tree view
 	let folderTree: FolderNode | null = null;
 	let loadingFolderTree = false;
-	let generatingQueue: Set<string> = new Set(); // Track sections being generated in background
 
 	async function handleSectionClick(section: WikiSection) {
 		if (!$currentProject || loadingSection) return;

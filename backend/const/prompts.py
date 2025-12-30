@@ -633,11 +633,9 @@ CRITICAL RULES:
    - Good: API, Client, Database, UserService, validateInput, processRequest
    - Bad: A, B, C, Node1, Node2, temp, xyz
 4. AVOID special characters in node labels that break Mermaid syntax
-   - Do NOT use: parentheses, brackets, braces, or quotes in node labels
-   - Use simple clear text labels without special characters
-   - Example: Use 'Call LLM' instead of 'Call LLM (Ollama)'
+   - Especially, Do NOT use: parentheses, brackets, braces, or quotes in node labels
+   - Example: A --> D[get(key)], the get(key) will make the diagram not compilable
 5. Make the diagram COMPREHENSIVE - it must fully explain {section_title}
-6. Include 8-20 nodes/participants (be thorough, this is the main content)
 7. Add meaningful edge labels where it adds clarity
 8. Ensure the diagram is syntactically correct Mermaid code for {diagram_type}
 9. Since this is the primary content, be detailed and complete
