@@ -818,7 +818,7 @@ async def get_folder_tree(request: FolderTreeRequest = Body(...)):
             name = os.path.basename(path)
             
             # Skip hidden files and common ignore patterns
-            if name.startswith('.') or name in ['node_modules', '__pycache__', 'dist', 'build', 'venv', '.git']:
+            if name.startswith('.') or name in Const.DIR_SKIP_LIST:
                 return None
             
             if current_depth >= max_depth:

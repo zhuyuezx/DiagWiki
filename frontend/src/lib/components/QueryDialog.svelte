@@ -10,11 +10,13 @@
 	let selectedSectionId = '';
 	let error = '';
 	let generatingInBackground: Set<string> = new Set();
+	let isGenerating = false;
 
 	async function handleGenerate() {
 		if (!prompt.trim() || !$currentProject) return;
 
 		error = '';
+		isGenerating = true;
 
 		// Find the selected section or create new
 		let section: WikiSection | undefined;
@@ -41,53 +43,53 @@
 		generatingInBackground.add(sectionToGenerate.section_id);
 		generatingInBackground = generatingInBackground;
 		
-		// Close dialog immediately
-		prompt = '';
-		selectedSectionId = '';
-		onClose();
-		
-		// Generate in background
-		setTimeout(async () => {
-			try {
-				const diagram = await generateSectionDiagram(projectPath, sectionToGenerate);
-				
-				// Add to frontend cache
-				diagramCache.update(cache => {
-					const newCache = new Map(cache);
-					newCache.set(sectionToGenerate.section_id, diagram);
-					return newCache;
+		// Generate and wait for completion
+		try {
+			const diagram = await generateSectionDiagram(projectPath, sectionToGenerate);
+			
+			// Add to frontend cache
+			diagramCache.update(cache => {
+				const newCache = new Map(cache);
+				newCache.set(sectionToGenerate.section_id, diagram);
+				return newCache;
+			});
+			
+			// Add the custom section to identifiedSections if it's new
+			if (sectionToGenerate.section_id.startsWith('custom_')) {
+				identifiedSections.update(sections => {
+					if (!sections.some(s => s.section_id === sectionToGenerate.section_id)) {
+						const updatedSection = {
+							...sectionToGenerate,
+							section_title: diagram.section_title || sectionToGenerate.section_title
+						};
+						return [...sections, updatedSection];
+					}
+					return sections;
 				});
-				
-				// Add the custom section to identifiedSections if it's new
-				if (sectionToGenerate.section_id.startsWith('custom_')) {
-					identifiedSections.update(sections => {
-						if (!sections.some(s => s.section_id === sectionToGenerate.section_id)) {
-							const updatedSection = {
-								...sectionToGenerate,
-								section_title: diagram.section_title || sectionToGenerate.section_title
-							};
-							return [...sections, updatedSection];
-						}
-						return sections;
-					});
-				}
-				
-				// Mark as generated
-				generatedDiagrams.update(set => {
-					const newSet = new Set(set);
-					newSet.add(sectionToGenerate.section_id);
-					return newSet;
-				});
-				
-				// Open the diagram
-				window.dispatchEvent(new CustomEvent('openDiagram', { detail: diagram }));
-			} catch (err) {
-				console.error('Failed to generate diagram:', err);
-			} finally {
-				generatingInBackground.delete(sectionToGenerate.section_id);
-				generatingInBackground = generatingInBackground;
 			}
-		}, 100);
+			
+			// Mark as generated
+			generatedDiagrams.update(set => {
+				const newSet = new Set(set);
+				newSet.add(sectionToGenerate.section_id);
+				return newSet;
+			});
+			
+			// Open the diagram
+			window.dispatchEvent(new CustomEvent('openDiagram', { detail: diagram }));
+			
+			// Close dialog after successful generation
+			prompt = '';
+			selectedSectionId = '';
+			onClose();
+		} catch (err) {
+			console.error('Failed to generate diagram:', err);
+			error = err instanceof Error ? err.message : 'Failed to generate diagram';
+		} finally {
+			generatingInBackground.delete(sectionToGenerate.section_id);
+			generatingInBackground = generatingInBackground;
+			isGenerating = false;
+		}
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -102,6 +104,18 @@
 {#if isOpen}
 	<!-- Floating dialog - bottom right corner, no blocking backdrop -->
 	<div class="fixed bottom-6 right-6 bg-white rounded-lg shadow-2xl w-96 z-50 border border-gray-200">
+		<!-- Loading Overlay -->
+		{#if isGenerating}
+			<div class="absolute inset-0 bg-white bg-opacity-90 backdrop-blur-sm rounded-lg z-10 flex flex-col items-center justify-center">
+				<svg class="animate-spin h-12 w-12 text-blue-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+				</svg>
+				<p class="text-gray-700 font-medium">Generation in progress...</p>
+				<p class="text-gray-500 text-sm mt-1">Please wait</p>
+			</div>
+		{/if}
+		
 		<!-- Header -->
 		<div class="flex items-center justify-between p-4 border-b border-gray-200">
 			<h2 class="text-lg font-semibold text-gray-900">Generate Custom Diagram</h2>
