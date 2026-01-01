@@ -151,7 +151,19 @@ class RepoUtil:
                 meta_data["file_path"] = relative_path
                 meta_data["real_path"] = relative_path
             
-            return Document(text=content, meta_data=meta_data)
+            # Add rich semantic context that will survive text splitting
+            # Include file type and path to help embedding model understand context
+            file_type_desc = {
+                '.svelte': 'Svelte frontend component',
+                '.ts': 'TypeScript code',
+                '.py': 'Python backend code',
+                '.md': 'Documentation',
+                '.json': 'Configuration',
+                '.yml': 'Configuration',
+            }.get(ext, 'Source code')
+            
+            context_header = f"[{file_type_desc}: {relative_path}]\n\n"
+            return Document(text=context_header + content, meta_data=meta_data)
             
         except Exception as e:
             logger.error(f"Error reading file {full_path}: {e}")

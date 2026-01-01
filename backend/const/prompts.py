@@ -556,7 +556,9 @@ def build_single_diagram_prompt(
 - Include key methods and properties
 - Use inheritance (--|>) and composition (--o) correctly
 - Keep class definitions focused on important members
-- Show interfaces and abstract classes clearly""",
+- Show interfaces and abstract classes clearly
+- If you want to add notes, they must be single-line using: note "text here"
+- Better approach: Put explanatory information in node_explanations and edge_explanations instead of notes""",
         
         "stateDiagram": """
 - MUST start with: stateDiagram-v2
