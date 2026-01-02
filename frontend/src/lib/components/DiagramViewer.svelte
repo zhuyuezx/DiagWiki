@@ -4,6 +4,7 @@
 	import { selectedElement, rightPanelOpen } from '$lib/stores';
 	import mermaid from 'mermaid';
 	import panzoom from 'panzoom';
+	import { jsPDF } from 'jspdf';
 
 	export let diagram: DiagramSection;
 
@@ -14,6 +15,9 @@
 	let currentDiagramId = '';
 	let renderCount = 0;
 	let zoomLevel = 1;
+	let showExportModal = false;
+
+	type ExportFormat = 'svg' | 'png' | 'jpg' | 'pdf';
 
 	onMount(async () => {
 		mermaid.initialize({
@@ -104,6 +108,170 @@
 		if (panzoomInstance) {
 			panzoomInstance.smoothZoom(0, 0, 0.8);
 		}
+	}
+
+	function openExportModal() {
+		showExportModal = true;
+	}
+
+	function closeExportModal() {
+		showExportModal = false;
+	}
+
+	async function exportDiagram(format: ExportFormat) {
+		if (!svgRef) return;
+
+		try {
+			const svgClone = svgRef.cloneNode(true) as SVGSVGElement;
+			const svgData = new XMLSerializer().serializeToString(svgClone);
+			
+			switch (format) {
+				case 'svg':
+					await exportAsSVG(svgData);
+					break;
+				case 'png':
+					await exportAsImage(svgClone, 'png');
+					break;
+				case 'jpg':
+					await exportAsImage(svgClone, 'jpg');
+					break;
+				case 'pdf':
+					await exportAsPDF(svgClone);
+					break;
+			}
+			
+			closeExportModal();
+		} catch (error) {
+			console.error('Failed to export diagram:', error);
+			alert(`Failed to export diagram: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		}
+	}
+
+	async function exportAsSVG(svgData: string) {
+		const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+		const url = URL.createObjectURL(svgBlob);
+		downloadFile(url, `${diagram.section_id}.svg`);
+		URL.revokeObjectURL(url);
+	}
+
+	async function exportAsImage(svgElement: SVGSVGElement, format: 'png' | 'jpg') {
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
+		if (!ctx) throw new Error('Could not get canvas context');
+
+		// Get SVG dimensions from viewBox or width/height attributes
+		const viewBox = svgElement.viewBox.baseVal;
+		const width = viewBox.width || svgElement.width.baseVal.value || 800;
+		const height = viewBox.height || svgElement.height.baseVal.value || 600;
+		
+		const scale = 2; // Higher resolution
+		canvas.width = width * scale;
+		canvas.height = height * scale;
+
+		// Set background - use light gray (matching the bg-gray-50 from UI)
+		ctx.fillStyle = '#f9fafb';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		// Convert SVG to data URL instead of blob URL to avoid CORS issues
+		const svgData = new XMLSerializer().serializeToString(svgElement);
+		const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+
+		return new Promise<void>((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				try {
+					ctx.scale(scale, scale);
+					ctx.drawImage(img, 0, 0, width, height);
+					
+					canvas.toBlob((blob) => {
+						if (blob) {
+							const blobUrl = URL.createObjectURL(blob);
+							downloadFile(blobUrl, `${diagram.section_id}.${format}`);
+							URL.revokeObjectURL(blobUrl);
+							resolve();
+						} else {
+							reject(new Error('Failed to create blob - canvas may be tainted or empty'));
+						}
+					}, `image/${format === 'jpg' ? 'jpeg' : 'png'}`, 0.95);
+				} catch (err) {
+					reject(err);
+				}
+			};
+			img.onerror = (e) => {
+				reject(new Error(`Failed to load image: ${e}`));
+			};
+			img.src = svgDataUrl;
+		});
+	}
+
+	async function exportAsPDF(svgElement: SVGSVGElement) {
+		// Get SVG dimensions from viewBox or width/height attributes
+		const viewBox = svgElement.viewBox.baseVal;
+		const width = viewBox.width || svgElement.width.baseVal.value || 800;
+		const height = viewBox.height || svgElement.height.baseVal.value || 600;
+
+		// First convert SVG to canvas
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d');
+		if (!ctx) throw new Error('Could not get canvas context');
+
+		const scale = 2; // High resolution
+		canvas.width = width * scale;
+		canvas.height = height * scale;
+
+		// Light gray background
+		ctx.fillStyle = '#f9fafb';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		const svgData = new XMLSerializer().serializeToString(svgElement);
+		const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+
+		return new Promise<void>((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				try {
+					ctx.scale(scale, scale);
+					ctx.drawImage(img, 0, 0, width, height);
+					
+					// Convert canvas to image data for PDF
+					const imgData = canvas.toDataURL('image/png', 0.95);
+					
+					// Create PDF with proper dimensions (convert px to mm, assuming 96 DPI)
+					const pdfWidth = width * 0.264583; // px to mm
+					const pdfHeight = height * 0.264583;
+					
+					// Use landscape or portrait based on aspect ratio
+					const orientation = width > height ? 'landscape' : 'portrait';
+					const pdf = new jsPDF({
+						orientation: orientation,
+						unit: 'mm',
+						format: [pdfWidth, pdfHeight]
+					});
+					
+					// Add image to PDF (fill entire page)
+					pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+					
+					// Save the PDF
+					pdf.save(`${diagram.section_id}.pdf`);
+					resolve();
+				} catch (err) {
+					reject(err);
+				}
+			};
+			img.onerror = (e) => {
+				reject(new Error(`Failed to load image: ${e}`));
+			};
+			img.src = svgDataUrl;
+		});
+	}
+
+	function downloadFile(url: string, filename: string) {
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
 	}
 
 	function addClickHandlers() {
@@ -254,6 +422,13 @@
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 				</svg>
 			</button>
+			<button
+				on:click={openExportModal}
+				class="px-2.5 py-1.5 hover:bg-gray-100 rounded border-2 border-gray-800 font-semibold text-xs leading-tight"
+				title="Export diagram"
+			>
+				Export
+			</button>
 		</div>
 	</div>
 
@@ -264,6 +439,57 @@
 		</div>
 	</div>
 </div>
+
+<!-- Export Format Modal -->
+{#if showExportModal}
+	<div class="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
+		<div class="bg-white rounded-lg shadow-2xl p-6 max-w-sm w-full mx-4 pointer-events-auto border border-gray-200" on:click|stopPropagation>
+			<h3 class="text-lg font-semibold text-gray-900 mb-4">Export Diagram</h3>
+			<p class="text-sm text-gray-600 mb-4">Choose export format:</p>
+			
+			<div class="space-y-2">
+				<button
+					on:click={() => exportDiagram('svg')}
+					class="w-full text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+				>
+					<div class="font-semibold text-gray-900">SVG</div>
+					<div class="text-xs text-gray-500">Vector format, scalable, small file size</div>
+				</button>
+				
+				<button
+					on:click={() => exportDiagram('png')}
+					class="w-full text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+				>
+					<div class="font-semibold text-gray-900">PNG</div>
+					<div class="text-xs text-gray-500">High quality with light gray background</div>
+				</button>
+				
+				<button
+					on:click={() => exportDiagram('jpg')}
+					class="w-full text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+				>
+					<div class="font-semibold text-gray-900">JPG</div>
+					<div class="text-xs text-gray-500">Smaller file size with light gray background</div>
+				</button>
+				
+				<button
+					on:click={() => exportDiagram('pdf')}
+					class="w-full text-left px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
+				>
+					<div class="font-semibold text-gray-900">PDF</div>
+					<div class="text-xs text-gray-500">Document format with embedded image</div>
+				</button>
+			</div>
+			
+			<button
+				on:click={closeExportModal}
+				class="mt-4 w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium text-gray-700 transition-colors"
+			>
+				Cancel
+			</button>
+		</div>
+	</div>
+{/if}
 
 <style>
 	:global(.mermaid-container svg) {

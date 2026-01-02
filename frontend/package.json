@@ -25,6 +25,7 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
+		"jspdf": "^3.0.4",
 		"mermaid": "^11.12.2",
 		"panzoom": "^9.4.3"
 	}
