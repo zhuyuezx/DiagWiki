@@ -1,4 +1,33 @@
-from adalflow import OllamaClient
+from adalflow.components.model_client.ollama_client import OllamaClient as _AdalOllamaClient
+import ollama
+
+
+class TimeoutOllamaClient(_AdalOllamaClient):
+    """
+    OllamaClient with configurable timeout.
+    
+    The base AdalFlow OllamaClient doesn't expose timeout configuration,
+    so we override the init methods to add it.
+    """
+    
+    def __init__(self, host: str = None, timeout: float = None):
+        """Initialize with optional timeout."""
+        self._timeout = timeout
+        super().__init__(host=host)
+    
+    def init_sync_client(self):
+        """Create the synchronous client with timeout."""
+        self.sync_client = ollama.Client(
+            host=self._host,
+            timeout=self._timeout
+        )
+    
+    def init_async_client(self):
+        """Create the async client with timeout."""
+        self.async_client = ollama.AsyncClient(
+            host=self._host,
+            timeout=self._timeout
+        )
 
 class Const:
     CODE_EXTENSIONS = [
@@ -31,8 +60,23 @@ class Const:
         "Pods", "DerivedData", ".gradle"
     ]
 
+    # ============================================================
+    # LLM Configuration - IMPORTANT FOR RELIABILITY
+    # ============================================================
+    # Timeout (seconds) for LLM API calls
+    # This prevents indefinite hangs when Ollama is busy or reloading models
+    LLM_TIMEOUT = 180.0  # 3 minutes - enough for model reload + generation
+    
+    # Keep-alive duration for Ollama models (prevents frequent reloads)
+    # Set to "10m" to keep model loaded for 10 minutes after last request
+    # This reduces cold-start delays significantly for the 30B model
+    OLLAMA_KEEP_ALIVE = "10m"
+    
+    # Host configuration
+    OLLAMA_HOST = "http://localhost:11434"
+
     EMBEDDING_CONFIG = {
-        "client": OllamaClient(),
+        "client": TimeoutOllamaClient(timeout=30.0),  # Embeddings are fast, shorter timeout
         "model_kwargs": {
         "model": "nomic-embed-text"
         }
@@ -46,3 +90,21 @@ class Const:
 
     GENERATION_MODEL = "qwen3-coder:30b"
     EMBEDDING_MODEL = "nomic-embed-text"
+
+
+def get_llm_client():
+    """
+    Get an OllamaClient configured with proper timeout.
+    
+    This prevents indefinite hangs when:
+    - Ollama server is busy
+    - Model needs to be reloaded (cold start)
+    - Network issues occur
+    
+    Returns:
+        TimeoutOllamaClient with timeout configured
+    """
+    return TimeoutOllamaClient(
+        host=Const.OLLAMA_HOST,
+        timeout=Const.LLM_TIMEOUT
+    )

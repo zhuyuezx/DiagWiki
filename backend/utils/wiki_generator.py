@@ -25,8 +25,8 @@ from const.prompts import (
     STRUCTURE_ANALYSIS_QUERIES,
     build_page_analysis_queries
 )
-from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType
+from const.const import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -164,14 +164,15 @@ class WikiGenerator:
             comprehensive=comprehensive
         )
         
-        # Call LLM
-        model = OllamaClient()
+        # Call LLM with timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "options": {
                 "temperature": 0.7,
                 "num_ctx": 8192
-            }
+            },
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -325,14 +326,15 @@ class WikiGenerator:
             language=language
         )
         
-        # Call LLM
-        model = OllamaClient()
+        # Call LLM with timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "options": {
                 "temperature": 0.7,
                 "num_ctx": 16384
-            }
+            },
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -482,12 +484,13 @@ class WikiGenerator:
             wiki_items=wiki_items
         )
         
-        # Call LLM
-        model = OllamaClient()
+        # Call LLM with timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "format": "json",
-            "options": {"temperature": 0.7, "num_ctx": 16384}
+            "options": {"temperature": 0.7, "num_ctx": 16384},
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -599,12 +602,13 @@ class WikiGenerator:
             codebase_context=codebase_context
         )
         
-        # Call LLM
-        model = OllamaClient()
+        # Call LLM with timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "format": "json",
-            "options": {"temperature": 0.7, "num_ctx": 16384}
+            "options": {"temperature": 0.7, "num_ctx": 16384},
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -769,12 +773,13 @@ class WikiGenerator:
             codebase_context=codebase_context
         )
         
-        # Call LLM
-        model = OllamaClient()
+        # Call LLM with timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "format": "json",
-            "options": {"temperature": 0.7, "num_ctx": 16384}
+            "options": {"temperature": 0.7, "num_ctx": 16384},
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(

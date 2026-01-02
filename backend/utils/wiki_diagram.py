@@ -10,9 +10,8 @@ import os
 import json
 import logging
 from typing import Dict, List
-from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType
-from const.const import Const
+from const.const import Const, get_llm_client
 from const.prompts import (
     build_page_analysis_queries,
     build_diagram_sections_prompt,
@@ -114,14 +113,16 @@ class WikiDiagramGenerator:
             language=language
         )
         
-        model = OllamaClient()
+        # Use get_llm_client() for proper timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "format": "json",
             "options": {
                 "temperature": 0.7,
                 "num_ctx": 8192
-            }
+            },
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE  # Keep model loaded
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -281,13 +282,15 @@ Requirements:
 
 Return ONLY the title text, nothing else."""
 
-        model = OllamaClient()
+        # Use get_llm_client() for proper timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "options": {
                 "temperature": 0.3,
                 "num_ctx": 4096
-            }
+            },
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE  # Keep model loaded
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(
@@ -347,7 +350,7 @@ Return ONLY the title text, nothing else."""
                 logger.warning(f"RAG query failed for '{query[:50]}...': {e}")
         
         # Build RAG context
-        MAX_RAG_CONTEXT_CHARS = 10**9
+        MAX_RAG_CONTEXT_CHARS = 100000
         
         rag_context_parts = []
         current_length = 0
@@ -407,14 +410,16 @@ Return ONLY the title text, nothing else."""
         elif usage_percentage > 75:
             logger.warning(f"⚠️  Prompt exceeds 75% of context window. Processing may be slow.")
         
-        model = OllamaClient()
+        # Use get_llm_client() for proper timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
             "format": "json",
             "options": {
                 "temperature": 0.7,
                 "num_ctx": 16384
-            }
+            },
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE  # Keep model loaded
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(

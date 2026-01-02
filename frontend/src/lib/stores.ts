@@ -28,6 +28,9 @@ export const identifiedSections = writable<WikiSection[]>([]);
 export const generateRequestSent = writable<Map<string, Set<string>>>(new Map());
 export const availableSections = writable<Map<string, Set<WikiSection>>>(new Map());
 
+// Failed sections that need retry
+export const failedSections = writable<Map<string, Set<string>>>(new Map());
+
 // Currently open diagram tabs
 export const openTabs = writable<DiagramSection[]>([]);
 

@@ -9,9 +9,8 @@ import os
 import logging
 from typing import Dict, List
 from adalflow.core.db import LocalDB
-from adalflow.components.model_client.ollama_client import OllamaClient
 from adalflow.core.types import ModelType, Document
-from const.const import Const
+from const.const import Const, get_llm_client
 from const.prompts import build_wiki_question_prompt
 
 logger = logging.getLogger(__name__)
@@ -162,10 +161,12 @@ class WikiRAGQuery:
             codebase_context=codebase_context
         )
         
-        model = OllamaClient()
+        # Use get_llm_client() for proper timeout configuration
+        model = get_llm_client()
         model_kwargs = {
             "model": Const.GENERATION_MODEL,
-            "options": {"temperature": 0.7}
+            "options": {"temperature": 0.7},
+            "keep_alive": Const.OLLAMA_KEEP_ALIVE
         }
         
         api_kwargs = model.convert_inputs_to_api_kwargs(

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { currentProject, projectHistory, addToHistory, isAnalyzing, identifiedSections, openDiagramTab, generatedDiagrams, diagramCache, generateRequestSent, availableSections } from '$lib/stores';
+	import { currentProject, projectHistory, addToHistory, isAnalyzing, identifiedSections, openDiagramTab, generatedDiagrams, diagramCache, generateRequestSent, availableSections, failedSections } from '$lib/stores';
 	import { identifyDiagramSections, generateSectionDiagram } from '$lib/api';
+	import { retryWithBackoff, RETRY_MAX } from '$lib/retry';
 	import type { WikiSection } from '$lib/types';
 
 	let folderPath = '';
@@ -18,10 +19,11 @@
 		try {
 			currentProject.set(folderPath);
 			addToHistory(folderPath);
+			
 			const result = await identifyDiagramSections(folderPath);
 			identifiedSections.set(result.sections);
 			
-			// Navigate to main view immediately
+			// Stop analyzing state
 			isAnalyzing.set(false);
 			
 			// Check which diagrams are already cached
@@ -34,6 +36,9 @@
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to analyze project';
 			isAnalyzing.set(false);
+			// Reset currentProject on error to go back to FolderPicker
+			currentProject.set(null);
+			identifiedSections.set([]);
 		}
 	}
 
@@ -41,6 +46,7 @@
 		console.log('Checking for cached diagrams...');
 		const cachedSections = [];
 		const uncachedSections = [];
+		const errorSections = [];
 		
 		// Check each section to see if it's already cached
 		for (const section of sections) {
@@ -61,7 +67,9 @@
 					map.set(folderPath, requestSent);
 					return map;
 				});
-				const diagram = await generateSectionDiagram(folderPath, section);
+				
+				// Use retry wrapper instead of direct call
+				const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section), section.section_id);
 
 				availableSections.update(map => {
 					const sectionsSet = map.get(folderPath) || new Set<WikiSection>();
@@ -89,12 +97,78 @@
 					openDiagramTab(diagram);
 				}
 			} catch (error) {
-				// Not cached or error - needs generation
-				uncachedSections.push(section);
+				// All retries exhausted - mark as error
+				console.error(`[${section.section_id}] Failed after ${RETRY_MAX} attempts`);
+				errorSections.push(section);
+				
+				// Update failedSections store
+				failedSections.update(map => {
+					const failedSet = map.get(folderPath) || new Set<string>();
+					failedSet.add(section.section_id);
+					map.set(folderPath, failedSet);
+					return map;
+				});
 			}
 		}
 		
-		console.log(`Found ${cachedSections.length} cached, ${uncachedSections.length} need generation`);
+		console.log(`Found ${cachedSections.length} cached, ${errorSections.length} failed after retries.`);
+	}
+
+	// Force retry a failed section
+	export async function retryFailedSection(section: any) {
+		if (!folderPath) return;
+		
+		console.log(`[${section.section_id}] Manual retry initiated...`);
+		
+		// Remove from failed set
+		failedSections.update(map => {
+			const failedSet = map.get(folderPath);
+			if (failedSet) {
+				failedSet.delete(section.section_id);
+				if (failedSet.size === 0) {
+					map.delete(folderPath);
+				} else {
+					map.set(folderPath, failedSet);
+				}
+			}
+			return map;
+		});
+		
+		try {
+			const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section), section.section_id);
+			
+			availableSections.update(map => {
+				const sectionsSet = map.get(folderPath) || new Set<WikiSection>();
+				sectionsSet.add(section);
+				map.set(folderPath, sectionsSet);
+				return map;
+			});
+			
+			diagramCache.update(cache => {
+				const newCache = new Map(cache);
+				newCache.set(section.section_id, diagram);
+				return newCache;
+			});
+			
+			generatedDiagrams.update(set => {
+				const newSet = new Set(set);
+				newSet.add(section.section_id);
+				return newSet;
+			});
+			
+			openDiagramTab(diagram);
+			console.log(`[${section.section_id}] Retry successful!`);
+		} catch (error) {
+			console.error(`[${section.section_id}] Retry failed:`, error);
+			// Add back to failed set
+			failedSections.update(map => {
+				const failedSet = map.get(folderPath) || new Set<string>();
+				failedSet.add(section.section_id);
+				map.set(folderPath, failedSet);
+				return map;
+			});
+			throw error;
+		}
 	}
 
 	function handleSelectHistory(path: string) {

@@ -448,12 +448,11 @@ IMPORTANT GUIDELINES:
    - Let the codebase structure guide you - don't force a fixed number
 
 2. Each diagram section represents ONE focused aspect that MUST be visualized
-   - System architecture / component relationships → flowchart or graph
+   - System architecture / component relationships/ moudle dependencies → flowchart
    - Data flow / process workflows → flowchart
    - Class hierarchies / inheritance → classDiagram
    - API call sequences / request-response patterns → sequence diagram
    - State machines / lifecycle → stateDiagram
-   - Module dependencies → graph
    - Database relationships → erDiagram
    - Interaction patterns between components → sequence or flowchart
 
@@ -533,8 +532,21 @@ def build_single_diagram_prompt(
 - Keep node labels concise (3-5 words max)
 - Every node must represent a real component/concept from the codebase, no vague concepts or placeholders
 - Can use subgraphs to group related nodes if this adds clarity
-- Do NOT use: parentheses, brackets, braces, or quotes in node labels
-- Example: A --> D[get(key)] is invalid, the get(key) will make the diagram compilation fail""",
+- SPECIAL CHARACTERS: Wrap labels with @ or special chars in quotes
+  Example: A["Recall@10"] B["Precision@5"] (CORRECT)
+  Example: A[Recall@10] B[Precision@5] (WRONG - will break!)
+- Alternative: Replace special chars with words: A[Recall at 10] (also correct)
+- STYLING RULES (Premium Professional Style):
+  * Use MINIMAL and SELECTIVE coloring - most nodes should use default styling
+  * Apply colors ONLY to emphasize critical nodes (entry points, error states, key decision points)
+  * Use a consistent, muted color palette:
+    - Entry/Start points: style X fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    - Error/Critical states: style Y fill:#ffebee,stroke:#c62828,stroke-width:2px
+    - Success/End states: style Z fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    - Key decision points: style W fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+  * NO random rainbow colors (avoid #f9f, #bbf, #bfb, #fbb, #bff, #ffb, etc.)
+  * Leave most nodes unstyled for a clean, professional appearance
+  * Apply styling to at most 3-5 critical nodes per diagram, never to every node""",
         
         "sequence": """
 - MUST start with: sequenceDiagram
@@ -622,7 +634,11 @@ CRITICAL RULES:
 2. IMPORTANT: Use descriptive, meaningful node/participant IDs that reflect their purpose
    - Good: API, Client, Database, UserService, validateInput, processRequest
    - Bad: A, B, C, Node1, Node2, temp, xyz
-3. AVOID special characters in node labels that break Mermaid syntax
+3. SPECIAL CHARACTERS IN NODE LABELS:
+   - NEVER use @ symbol directly in labels (e.g., "Recall@10" will BREAK)
+   - Instead wrap in quotes: NodeID["Recall@10"] or use alternative text: NodeID[Recall at 10]
+   - AVOID: parentheses (), brackets [], braces {{}}, @ in unquoted labels
+   - If special chars needed: use quoted syntax NodeID["Label with @"] or replace with words
 4. Make the diagram COMPREHENSIVE - it must fully explain {section_title}
 5. Add meaningful edge labels where it adds clarity
 6. Ensure the diagram is syntactically correct Mermaid code for {diagram_type}

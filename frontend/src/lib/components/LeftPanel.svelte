@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { identifiedSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache } from '$lib/stores';
+	import { identifiedSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache, failedSections } from '$lib/stores';
 	import { generateSectionDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
 	import TreeNode from './TreeNode.svelte';
+	import { retryWithBackoff } from '$lib/retry';
 
 	type ViewMode = 'diagrams' | 'tree';
 	type FolderNode = {
@@ -57,6 +58,68 @@
 	$: isReady = (sectionId: string): boolean => {
 		return $generatedDiagrams.has(sectionId);
 	};
+	
+	// Check if section failed
+	$: isFailed = (sectionId: string): boolean => {
+		if (!$currentProject) return false;
+		return $failedSections.get($currentProject)?.has(sectionId) || false;
+	};
+	
+	// Handle retry for failed sections
+	async function handleRetry(section: WikiSection, event: Event) {
+		event.stopPropagation();
+		
+		if (!$currentProject) return;
+		
+		console.log(`[${section.section_id}] Manual retry initiated...`);
+		
+		// Remove from failed set temporarily
+		failedSections.update(map => {
+			const failedSet = map.get($currentProject);
+			if (failedSet) {
+				failedSet.delete(section.section_id);
+				if (failedSet.size === 0) {
+					map.delete($currentProject);
+				} else {
+					map.set($currentProject, failedSet);
+				}
+			}
+			return map;
+		});
+		
+		try {
+			// Import shared retry logic
+			const diagram = await retryWithBackoff(() => generateSectionDiagram($currentProject, section), section.section_id);
+			
+			// Success - update stores
+			diagramCache.update(cache => {
+				const newCache = new Map(cache);
+				newCache.set(section.section_id, diagram);
+				return newCache;
+			});
+			
+			generatedDiagrams.update(set => {
+				const newSet = new Set(set);
+				newSet.add(section.section_id);
+				return newSet;
+			});
+			
+			openDiagramTab(diagram);
+			console.log(`[${section.section_id}] Retry successful!`);
+		} catch (error) {
+			console.error(`[${section.section_id}] All retries failed:`, error);
+			
+			// Add back to failed set
+			failedSections.update(map => {
+				const failedSet = map.get($currentProject) || new Set<string>();
+				failedSet.add(section.section_id);
+				map.set($currentProject, failedSet);
+				return map;
+			});
+			
+			alert(`Failed to regenerate after 3 attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		}
+	}
 	
 	function toggleGroup(groupName: string) {
 		if (expandedGroups.has(groupName)) {
@@ -238,29 +301,43 @@
 								{#each sections as section}
 									<button
 										on:click={() => handleSectionClick(section)}
-										disabled={!isReady(section.section_id)}
+										disabled={!isReady(section.section_id) && !isFailed(section.section_id)}
 										class="w-full text-left px-3 py-2 rounded transition-colors group relative"
 										class:bg-blue-50={isOpen(section.section_id)}
-										class:border-l-2={isOpen(section.section_id)}
+										class:bg-red-50={isFailed(section.section_id)}
+										class:border-l-2={isOpen(section.section_id) || isFailed(section.section_id)}
 										class:border-blue-500={isOpen(section.section_id)}
-										class:hover:bg-gray-50={!isReady(section.section_id)}
-										class:cursor-wait={!isReady(section.section_id)}
+										class:border-red-500={isFailed(section.section_id)}
+										class:hover:bg-gray-50={!isReady(section.section_id) && !isFailed(section.section_id)}
+										class:cursor-wait={!isReady(section.section_id) && !isFailed(section.section_id)}
 									>
 										<div class="flex items-start gap-2">
 											<div class="flex-1 min-w-0">
 												<div class="text-sm font-medium text-gray-900 flex items-center gap-2" title="{section.section_title}">
 													<span class="truncate">{section.section_title}</span>
-													{#if !isReady(section.section_id)}
+													{#if isFailed(section.section_id)}
+														<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 flex-shrink-0">
+															Failed
+														</span>
+													{:else if !isReady(section.section_id)}
 														<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 flex-shrink-0">
 															Loading...
 														</span>
-													{:else if !isReady(section.section_id)}
-														<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0">
-															Not cached
-														</span>
 													{/if}
 												</div>
-												{#if !isReady(section.section_id)}
+												{#if isFailed(section.section_id)}
+													<div class="flex items-center gap-2 mt-1">
+														<span class="text-xs text-red-600">
+															Generation failed after 3 attempts
+														</span>
+														<button
+															on:click={(e) => handleRetry(section, e)}
+															class="text-xs px-2 py-0.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+														>
+															Retry
+														</button>
+													</div>
+												{:else if !isReady(section.section_id)}
 													<div class="text-xs text-gray-500 mt-1">
 														Queued for generation...
 													</div>
