@@ -406,16 +406,20 @@ class WikiGenerator:
         diagram_type: str,
         key_concepts: List[str],
         language: str = "en",
-        use_cache: bool = True
+        use_cache: bool = True,
+        reference_files: List[str] = None
     ) -> Dict:
         """
         Step 2: Generate diagram for a single section.
         Delegates to WikiDiagramGenerator module.
+        
+        Args:
+            reference_files: Optional list of file paths to use as reference (bypasses RAG)
         """
         self.initialize_rag()
         return self.diagram_generator.generate_section_diagram(
             section_id, section_title, section_description,
-            diagram_type, key_concepts, language, use_cache
+            diagram_type, key_concepts, language, use_cache, reference_files
         )
     
     def analyze_wiki_problem(

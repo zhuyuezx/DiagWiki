@@ -175,7 +175,8 @@ class WikiDiagramGenerator:
         diagram_type: str,
         key_concepts: List[str],
         language: str = "en",
-        use_cache: bool = True
+        use_cache: bool = True,
+        reference_files: List[str] = None
     ) -> Dict:
         """
         Step 2: Generate diagram for a single section (Two-Step API - Part 2).
@@ -190,6 +191,7 @@ class WikiDiagramGenerator:
             key_concepts: List of key concepts to include
             language: Target language code
             use_cache: Whether to use cached diagram if available
+            reference_files: Optional list of file paths to use as reference (bypasses RAG)
         
         Returns:
             Dict with diagram, nodes with explanations, edges with explanations
@@ -218,8 +220,14 @@ class WikiDiagramGenerator:
             section_title = self._generate_concise_title(section_title, section_description)
             logger.info(f"Generated title: {section_title}")
         
-        # Perform RAG queries
-        rag_context, retrieved_sources, all_retrieved_docs = self._perform_section_rag_queries(section_title if len(section_title) < 60 else section_description)
+        # Perform RAG queries or use manual reference files
+        if reference_files:
+            # Manual mode: read specified files directly
+            logger.info(f"Using {len(reference_files)} manually selected reference files")
+            rag_context, retrieved_sources, all_retrieved_docs = self._read_reference_files(reference_files)
+        else:
+            # Automatic mode: use RAG
+            rag_context, retrieved_sources, all_retrieved_docs = self._perform_section_rag_queries(section_title if len(section_title) < 60 else section_description)
         
         # Build diagram prompt
         logger.info(f"Generating diagram for: {section_title}")
@@ -393,6 +401,72 @@ Return ONLY the title text, nothing else."""
         logger.info(f"Retrieved sources size: {len(retrieved_sources)} chars (~{len(retrieved_sources)//4} tokens)")
         
         return rag_context, retrieved_sources, all_retrieved_docs
+    
+    def _read_reference_files(self, file_paths: List[str]):
+        """
+        Read content directly from specified files (manual reference mode).
+        
+        Args:
+            file_paths: List of file paths relative to the root_path
+            
+        Returns:
+            Tuple of (rag_context, retrieved_sources, all_docs)
+        """
+        logger.info(f"Reading {len(file_paths)} manually selected reference files")
+        
+        # Create mock document objects for consistency
+        from adalflow.core.types import Document
+        
+        all_docs = []
+        rag_context_parts = []
+        retrieved_sources_parts = []
+        
+        MAX_FILE_CHARS = 50000  # Limit per file to prevent overflow
+        
+        for i, file_path in enumerate(file_paths):
+            # Construct full path
+            full_path = os.path.join(self.root_path, file_path)
+            
+            if not os.path.exists(full_path):
+                logger.warning(f"Reference file not found: {file_path}")
+                continue
+            
+            try:
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Truncate if too large
+                if len(content) > MAX_FILE_CHARS:
+                    content = content[:MAX_FILE_CHARS] + "\n\n[... truncated for size limits ...]"
+                
+                # Create mock document
+                doc = Document(
+                    text=content,
+                    meta_data={"file_path": file_path}
+                )
+                all_docs.append(doc)
+                
+                # Add to context
+                rag_context_parts.append(f"File: {file_path}\n{content}")
+                
+                # Add to sources (with preview)
+                preview_length = 600
+                retrieved_sources_parts.append(
+                    f"Source {i+1} ({file_path}):\n{content[:preview_length]}"
+                )
+                
+                logger.info(f"Read reference file: {file_path} ({len(content)} chars)")
+                
+            except Exception as e:
+                logger.error(f"Failed to read reference file {file_path}: {e}")
+                continue
+        
+        rag_context = "\n\n".join(rag_context_parts)
+        retrieved_sources = "\n\n".join(retrieved_sources_parts)
+        
+        logger.info(f"Manual reference context size: {len(rag_context)} chars from {len(all_docs)} files")
+        
+        return rag_context, retrieved_sources, all_docs
     
     def _generate_diagram_with_llm(self, diagram_prompt: str) -> str:
         """Generate diagram using LLM with size validation."""

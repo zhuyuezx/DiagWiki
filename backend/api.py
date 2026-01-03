@@ -464,6 +464,7 @@ class SectionDiagramRequest(BaseModel):
     diagram_type: str = Field(..., description="Type of Mermaid diagram (flowchart, sequence, class, etc.)")
     key_concepts: List[str] = Field(..., description="List of key concepts to include in the diagram")
     language: str = Field("en", description="Language code")
+    reference_files: Optional[List[str]] = Field(None, description="Optional list of specific file paths to use as reference instead of RAG")
 
 
 @app.post("/identifyDiagramSections")
@@ -576,7 +577,8 @@ async def generate_section_diagram(request: SectionDiagramRequest = Body(...)):
             request.section_description,
             request.diagram_type,
             request.key_concepts,
-            request.language
+            request.language,
+            request.reference_files
         )
         
         return result
@@ -595,7 +597,8 @@ def _generate_diagram_sync(
     section_description: str,
     diagram_type: str,
     key_concepts: list,
-    language: str
+    language: str,
+    reference_files: Optional[List[str]] = None
 ):
     """Synchronous function to run in thread pool."""
     data_dir = os.path.join(os.path.dirname(__file__), "data")
@@ -607,7 +610,8 @@ def _generate_diagram_sync(
         diagram_type=diagram_type,
         key_concepts=key_concepts,
         language=language,
-        use_cache=True
+        use_cache=True,
+        reference_files=reference_files
     )
 
 
@@ -797,64 +801,110 @@ async def get_diagram_references(request: DiagramReferencesRequest = Body(...)):
 @app.post("/getFolderTree")
 async def get_folder_tree(request: FolderTreeRequest = Body(...)):
     """
-    Get the folder structure for a project.
+    Get the folder structure for a project, showing only cached files.
     
-    This endpoint returns a hierarchical tree structure of the project's
-    folders and files.
+    This endpoint returns a hierarchical tree structure containing only files
+    that are actually cached in the database. This prevents errors when users
+    select files that weren't processed during initialization.
     
     Args:
         request: FolderTreeRequest with root_path
         
     Returns:
-        JSON with folder tree structure
+        JSON with folder tree structure (only cached files)
     """
     try:
         # Validate folder
         if not os.path.exists(request.root_path):
             raise HTTPException(status_code=404, detail=f"Folder not found: {request.root_path}")
         
-        def build_tree(path: str, max_depth: int = 5, current_depth: int = 0) -> Dict:
-            """Recursively build folder tree"""
-            name = os.path.basename(path)
-            
-            # Skip hidden files and common ignore patterns
-            if name.startswith('.') or name in Const.DIR_SKIP_LIST:
-                return None
-            
-            if current_depth >= max_depth:
-                return None
-            
-            if os.path.isfile(path):
-                return {
-                    "name": name,
-                    "type": "file",
-                    "path": os.path.relpath(path, request.root_path)
-                }
-            elif os.path.isdir(path):
-                children = []
-                try:
-                    for item in sorted(os.listdir(path)):
-                        item_path = os.path.join(path, item)
-                        child_tree = build_tree(item_path, max_depth, current_depth + 1)
-                        if child_tree:
-                            children.append(child_tree)
-                except PermissionError:
-                    pass
-                
-                return {
-                    "name": name if name else os.path.basename(request.root_path),
-                    "type": "folder",
-                    "path": os.path.relpath(path, request.root_path) if path != request.root_path else ".",
-                    "children": children
-                }
-            return None
+        # Load database to get cached files
+        db_name = generate_db_name(request.root_path)
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        db_path = os.path.join(data_dir, db_name, "db.pkl")
         
-        tree = build_tree(request.root_path)
+        if not os.path.exists(db_path):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Wiki not initialized for this folder. Please call /initWiki first."
+            )
+        
+        # Load database and get all cached file paths
+        from adalflow.core.db import LocalDB
+        db = LocalDB.load_state(filepath=db_path)
+        transformed_docs = db.get_transformed_data(key="split_and_embed")
+        
+        # Extract unique file paths from cached documents
+        cached_files = set()
+        for doc in transformed_docs:
+            if hasattr(doc, 'meta_data'):
+                file_path = doc.meta_data.get('file_path', '')
+                if file_path:
+                    cached_files.add(file_path)
+        
+        logger.info(f"Found {len(cached_files)} cached files in database")
+        
+        def build_tree_from_cached(file_paths: set) -> Dict:
+            """Build tree structure from cached file paths only"""
+            # Build tree structure
+            root = {
+                "name": os.path.basename(request.root_path),
+                "type": "folder",
+                "path": ".",
+                "children": []
+            }
+            
+            # Organize files into tree structure
+            for file_path in sorted(file_paths):
+                parts = file_path.split(os.sep)
+                current = root
+                
+                # Navigate/create folder structure
+                for i, part in enumerate(parts[:-1]):
+                    # Find or create folder
+                    folder = None
+                    for child in current["children"]:
+                        if child["name"] == part and child["type"] == "folder":
+                            folder = child
+                            break
+                    
+                    if not folder:
+                        folder = {
+                            "name": part,
+                            "type": "folder",
+                            "path": os.sep.join(parts[:i+1]),
+                            "children": []
+                        }
+                        current["children"].append(folder)
+                    
+                    current = folder
+                
+                # Add file
+                if parts:  # Ensure parts is not empty
+                    file_node = {
+                        "name": parts[-1],
+                        "type": "file",
+                        "path": file_path
+                    }
+                    current["children"].append(file_node)
+            
+            # Sort children (folders first, then files)
+            def sort_children(node):
+                if node["type"] == "folder" and node.get("children"):
+                    node["children"].sort(key=lambda x: (x["type"] == "file", x["name"]))
+                    for child in node["children"]:
+                        sort_children(child)
+            
+            sort_children(root)
+            return root
+        
+        tree = build_tree_from_cached(cached_files)
         
         return {
             "status": "success",
             "root_path": request.root_path,
-            "tree": tree
+            "tree": tree,
+            "cached_file_count": len(cached_files)
         }
         
     except HTTPException:

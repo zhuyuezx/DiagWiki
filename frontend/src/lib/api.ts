@@ -41,7 +41,7 @@ export async function identifyDiagramSections(rootPath: string) {
 	return await response.json();
 }
 
-export async function generateSectionDiagram(rootPath: string, section: any) {
+export async function generateSectionDiagram(rootPath: string, section: any, referenceFiles?: string[]) {
 	const response = await fetch(`${API_BASE}/generateSectionDiagram`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -52,7 +52,8 @@ export async function generateSectionDiagram(rootPath: string, section: any) {
 			section_description: section.section_description,
 			diagram_type: section.diagram_type,
 			key_concepts: section.key_concepts,
-			language: 'en'
+			language: 'en',
+			reference_files: referenceFiles
 		})
 	});
 

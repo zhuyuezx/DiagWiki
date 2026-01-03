@@ -2,15 +2,69 @@
 	import { currentProject, identifiedSections, generatedDiagrams, diagramCache } from '$lib/stores';
 	import { generateSectionDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
+	import FileTreeNode from './FileTreeNode.svelte';
 
 	export let isOpen = false;
 	export let onClose: () => void;
 
 	let prompt = '';
 	let selectedSectionId = '';
+	let selectedDiagramType: 'flowchart' | 'sequence' | 'class' | 'stateDiagram' | 'erDiagram' = 'flowchart';
+	let referenceMode: 'auto' | 'manual' = 'auto';
+	let selectedFiles: string[] = [];
+	let showFileSelector = false;
+	let fileTree: any = null;
 	let error = '';
 	let generatingInBackground: Set<string> = new Set();
 	let isGenerating = false;
+
+	const diagramTypes = [
+		{ value: 'flowchart', label: 'Flowchart', description: 'Process flows, system architecture' },
+		{ value: 'sequence', label: 'Sequence Diagram', description: 'Interactions over time' },
+		{ value: 'class', label: 'Class Diagram', description: 'Object-oriented structure' },
+		{ value: 'stateDiagram', label: 'State Diagram', description: 'State transitions' },
+		{ value: 'erDiagram', label: 'ER Diagram', description: 'Database relationships' }
+	];
+
+	async function loadFileTree() {
+		if (!$currentProject || fileTree) return;
+		
+		try {
+			const response = await fetch('http://localhost:8001/getFolderTree', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ root_path: $currentProject })
+			});
+			
+			if (response.ok) {
+				const data = await response.json();
+				fileTree = data.tree;
+			}
+		} catch (err) {
+			console.error('Failed to load file tree:', err);
+		}
+	}
+
+	function toggleFileSelection(filePath: string) {
+		if (selectedFiles.includes(filePath)) {
+			selectedFiles = selectedFiles.filter(f => f !== filePath);
+		} else {
+			selectedFiles = [...selectedFiles, filePath];
+		}
+	}
+
+	function collectFiles(node: any): string[] {
+		if (!node) return [];
+		if (node.type === 'file') return [node.path];
+		if (node.type === 'folder' && node.children) {
+			return node.children.flatMap(collectFiles);
+		}
+		return [];
+	}
+
+	$: if (referenceMode === 'manual' && !fileTree) {
+		loadFileTree();
+	}
 
 	async function handleGenerate() {
 		if (!prompt.trim() || !$currentProject) return;
@@ -31,8 +85,14 @@
 				section_id: `custom_${Date.now()}`,
 				section_title: prompt,
 				section_description: prompt,
-				diagram_type: 'flowchart',
+				diagram_type: selectedDiagramType,
 				key_concepts: []
+			};
+		} else {
+			// Update the diagram type if user selected a different one
+			section = {
+				...section,
+				diagram_type: selectedDiagramType
 			};
 		}
 
@@ -45,7 +105,8 @@
 		
 		// Generate and wait for completion
 		try {
-			const diagram = await generateSectionDiagram(projectPath, sectionToGenerate);
+			const referenceFiles = referenceMode === 'manual' ? selectedFiles : undefined;
+			const diagram = await generateSectionDiagram(projectPath, sectionToGenerate, referenceFiles);
 			
 			// Add to frontend cache
 			diagramCache.update(cache => {
@@ -81,6 +142,9 @@
 			// Close dialog after successful generation
 			prompt = '';
 			selectedSectionId = '';
+			selectedDiagramType = 'flowchart';
+			selectedFiles = [];
+			referenceMode = 'auto';
 			onClose();
 		} catch (err) {
 			console.error('Failed to generate diagram:', err);
@@ -151,22 +215,82 @@
 					></textarea>
 				</div>
 
-				<!-- Section Selector -->
+				<!-- Diagram Type Selector -->
 				<div>
-					<label for="section" class="block text-xs font-medium text-gray-700 mb-1">
-						Base on section (optional)
+					<label for="diagramType" class="block text-xs font-medium text-gray-700 mb-1">
+						Diagram Type
 					</label>
 					<select
-						id="section"
-						bind:value={selectedSectionId}
+						id="diagramType"
+						bind:value={selectedDiagramType}
 						class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
 					>
-						<option value="">New custom diagram</option>
-						{#each $identifiedSections as section}
-							<option value={section.section_id}>{section.section_title}</option>
+						{#each diagramTypes as type}
+							<option value={type.value}>
+								{type.label} - {type.description}
+							</option>
 						{/each}
 					</select>
 				</div>
+
+				<!-- Reference Mode Selector -->
+				<div>
+					<div class="block text-xs font-medium text-gray-700 mb-1">
+						Reference Documents
+					</div>
+					<div class="flex gap-2">
+						<button
+							type="button"
+							on:click={() => referenceMode = 'auto'}
+							class="flex-1 px-3 py-2 text-sm rounded-md transition-colors {referenceMode === 'auto' 
+								? 'bg-blue-600 text-white' 
+								: 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+						>
+							Auto (RAG)
+						</button>
+						<button
+							type="button"
+							on:click={() => { referenceMode = 'manual'; loadFileTree(); }}
+							class="flex-1 px-3 py-2 text-sm rounded-md transition-colors {referenceMode === 'manual' 
+								? 'bg-blue-600 text-white' 
+								: 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
+						>
+							Manual
+						</button>
+					</div>
+					{#if referenceMode === 'auto'}
+						<p class="text-xs text-gray-500 mt-1">Backend will automatically retrieve relevant files</p>
+					{:else}
+						<p class="text-xs text-gray-500 mt-1">Select specific files to reference ({selectedFiles.length} selected)</p>
+					{/if}
+				</div>
+
+				<!-- File Selector (Manual Mode) -->
+				{#if referenceMode === 'manual'}
+					<div class="border border-gray-300 rounded-md overflow-hidden">
+						<div class="bg-gray-50 px-3 py-2 border-b border-gray-200 flex justify-between items-center">
+							<span class="text-xs font-medium text-gray-700">Select Files</span>
+							<button
+								type="button"
+								on:click={() => selectedFiles = []}
+								class="text-xs text-blue-600 hover:text-blue-700"
+							>
+								Clear All
+							</button>
+						</div>
+						<div class="max-h-48 overflow-y-auto p-2">
+							{#if fileTree}
+								<FileTreeNode 
+									node={fileTree} 
+									{selectedFiles}
+									on:toggle={(e) => toggleFileSelection(e.detail)}
+								/>
+							{:else}
+								<p class="text-xs text-gray-500 p-2">Loading files...</p>
+							{/if}
+						</div>
+					</div>
+				{/if}
 
 				{#if error}
 					<div class="p-2 bg-red-50 border border-red-200 rounded-md">
