@@ -46,13 +46,9 @@
 		const cache = $diagramCache;
 		if (cache.has(section.section_id)) {
 			const cachedDiagram = cache.get(section.section_id)!;
-			console.log('✓ Using cached diagram (no API call):', section.section_id);
 			openDiagramTab(cachedDiagram);
 			return;
 		}
-
-		// Not in cache, load from backend
-		console.log('✗ Cache miss, calling API for:', section.section_id);
 
 		try {
 			const diagram = await generateSectionDiagram($currentProject, section);
@@ -93,8 +89,6 @@
 		const cachedDiagram = $diagramCache.get(section.section_id);
 		if (!cachedDiagram) return;
 		
-		console.log(`[${section.section_id}] Fixing corrupted diagram...`);
-		
 		try {
 			const fixedDiagram = await fixCorruptedDiagram(
 				$currentProject,
@@ -104,7 +98,12 @@
 			);
 			
 			if (fixedDiagram.status === 'success') {
-				console.log(`[${section.section_id}] Fix successful!`);
+				// Remove from corrupted set FIRST
+				corruptedDiagrams.update(map => {
+					const newMap = new Map(map);
+					newMap.delete(section.section_id);
+					return newMap;
+				});
 				
 				// Update cache with fixed diagram
 				diagramCache.update(cache => {
@@ -113,14 +112,7 @@
 					return newCache;
 				});
 				
-				// Remove from corrupted set
-				corruptedDiagrams.update(map => {
-					const newMap = new Map(map);
-					newMap.delete(section.section_id);
-					return newMap;
-				});
-				
-				// Update open tab if it exists
+				// Update open tab if it exists - THIS IS CRITICAL
 				const tabIndex = $openTabs.findIndex(t => t.section_id === section.section_id);
 				if (tabIndex !== -1) {
 					openTabs.update(tabs => {
@@ -178,7 +170,6 @@
 			});
 			
 			openDiagramTab(diagram);
-			console.log(`[${section.section_id}] Retry successful!`);
 		} catch (error) {
 			console.error(`[${section.section_id}] All retries failed:`, error);
 			

@@ -109,6 +109,7 @@
 
 		// Find the selected section or create new
 		let section: WikiSection | undefined;
+		let isNewCustomSection = false;
 		
 		if (selectedSectionId) {
 			const projectSections = $currentProject ? $identifiedSections.get($currentProject) : [];
@@ -117,13 +118,23 @@
 		
 		if (!section) {
 			// Create a custom section based on the prompt
+			// Use meaningful ID from title instead of timestamp
+			const customId = prompt
+				.toLowerCase()
+				.trim()
+				.replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+				.replace(/\s+/g, '-') // Replace spaces with hyphens
+				.replace(/-+/g, '-') // Collapse multiple hyphens
+				.replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+			
 			section = {
-				section_id: `custom_${Date.now()}`,
+				section_id: customId || `custom-${Date.now()}`, // Fallback to timestamp if title is invalid
 				section_title: prompt,
 				section_description: prompt,
 				diagram_type: selectedDiagramType,
 				key_concepts: []
 			};
+			isNewCustomSection = true; // Mark as new custom section
 		} else {
 			// Update the diagram type if user selected a different one
 			section = {
@@ -152,7 +163,7 @@
 			});
 			
 			// Add the custom section to identifiedSections if it's new
-			if (sectionToGenerate.section_id.startsWith('custom_')) {
+			if (isNewCustomSection) {
 				identifiedSections.update(map => {
 					if (!$currentProject) return map;
 					const newMap = new Map(map);

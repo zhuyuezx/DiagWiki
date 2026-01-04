@@ -724,7 +724,9 @@ def build_diagram_correction_prompt(
         "sequence": """- MUST start with: sequenceDiagram
 - Format: participant Name
 - Show message flow: Actor->>Target: message
-- Use activate/deactivate for lifelines""",
+- Use activate/deactivate for lifelines
+- CRITICAL: "return" is NOT valid syntax in Mermaid! Instead use Actor-->>Target: message or Note
+- If ending early, just use deactivate Actor (NO bare "return" statement!)""",
         "class": """- MUST start with: classDiagram
 - Define classes: class ClassName { +method() }
 - Show relationships: Parent <|-- Child""",
@@ -746,6 +748,153 @@ def build_diagram_correction_prompt(
     
     instructions = diagram_instructions.get(diagram_type, diagram_instructions["flowchart"])
     
+    # Define diagram-type-specific common errors
+    common_errors_generic = [
+        "**Special characters in labels** → Wrap in quotes: A[\"Recall@10\"]",
+        "**Missing diagram type declaration** → Start with: {required_syntax}",
+        "**Invalid node IDs** → Use alphanumeric IDs (no spaces/special chars)",
+        "**Invalid characters** → Remove or escape @, #, %, etc. in labels"
+    ]
+    
+    common_errors_flowchart = [
+        "**Syntax errors in arrows** → Use --> or ->> correctly",
+        "**Unclosed subgraphs** → Ensure every subgraph has \"end\"",
+        "**Invalid style syntax** → Check color codes and property names",
+        "**Duplicate node IDs** → Make all IDs unique"
+    ]
+    
+    common_errors_sequence = [
+        """**"return" keyword NOT supported** → Mermaid does NOT support bare "return"!
+   - WRONG: `return` (causes parse error)
+   - RIGHT: Remove it entirely, or use `Actor-->>Target: return_value`
+   - If ending flow early: just use `deactivate Actor` without "return\"""",
+        """**Deactivate without activate** → "Trying to inactivate an inactive participant"
+   - ERROR: Calling `deactivate Actor` for a participant never activated OR already deactivated
+   - COMMON CAUSES:
+     a) `deactivate` inside alt/else branch AND after `end`
+     b) `deactivate` without matching `activate`
+     c) Calling `deactivate` twice for the same participant
+   - FIX: Count each `activate` and `deactivate` - they must match 1:1
+   - SOLUTION: Either add missing `activate` or remove extra `deactivate`"""
+    ]
+    
+    common_errors_class = [
+        "**Invalid relationship syntax** → Use <|-- for inheritance, *-- for composition",
+        "**Missing class definition** → Define class before using: class ClassName",
+        "**Invalid method syntax** → Use +publicMethod() or -privateMethod()"
+    ]
+    
+    common_errors_state = [
+        "**Invalid state transitions** → Use --> for transitions with optional labels",
+        "**Unclosed state blocks** → Ensure composite states have proper nesting"
+    ]
+    
+    common_errors_er = [
+        "**Invalid relationship cardinality** → Use ||--o{ , |o--o| , etc.",
+        "**Missing entity definition** → Define entities before relationships"
+    ]
+    
+    # Select errors based on diagram type
+    type_specific_errors = {
+        "flowchart": common_errors_generic + common_errors_flowchart,
+        "sequence": common_errors_generic + common_errors_sequence,
+        "class": common_errors_generic + common_errors_class,
+        "stateDiagram": common_errors_generic + common_errors_state,
+        "erDiagram": common_errors_generic + common_errors_er
+    }
+    
+    selected_errors = type_specific_errors.get(diagram_type, common_errors_generic + common_errors_flowchart)
+    errors_text = "\n".join([f"{i+1}. {err}" for i, err in enumerate(selected_errors)])
+    
+    # Add detailed examples only for sequence diagrams (since they're most problematic)
+    examples_section = ""
+    if diagram_type == "sequence":
+        examples_section = """
+DETAILED EXAMPLES FOR SEQUENCE DIAGRAMS:
+
+EXAMPLE #1 - Double deactivate (inside branch + after end):
+❌ BROKEN:
+```
+alt Valid
+  Actor->>Target: success
+else Invalid  
+  Actor->>Target: error
+  deactivate Actor  ← deactivate inside branch
+end
+deactivate Actor  ← deactivate after end (ERROR!)
+```
+
+✅ FIXED:
+```
+alt Valid
+  Actor->>Target: success
+else Invalid  
+  Actor->>Target: error
+end
+deactivate Actor  ← Only ONE deactivate after end
+```
+
+EXAMPLE #2 - Deactivate without activate:
+❌ BROKEN:
+```
+A->>B: call function
+activate B
+B-->>A: return result
+deactivate B
+A-->>C: forward result
+deactivate A  ← ERROR: A was never activated!
+```
+
+✅ FIXED (Option 1 - Add activate):
+```
+A->>B: call function
+activate A  ← Add missing activate
+activate B
+B-->>A: return result
+deactivate B
+A-->>C: forward result
+deactivate A  ← Now this matches the activate above
+```
+
+✅ FIXED (Option 2 - Remove deactivate):
+```
+A->>B: call function
+activate B
+B-->>A: return result
+deactivate B
+A-->>C: forward result
+← Simply remove the unmatched deactivate
+```
+"""
+    
+    # Type-specific verification steps
+    verification_steps_generic = [
+        "Analyze the error message and identify the EXACT issue",
+        "**FIX the syntax error** - do NOT return the same broken code!",
+        "If you're unsure how to fix it: RECONSTRUCT the diagram with correct syntax",
+        "Ensure the diagram is valid Mermaid syntax",
+        "Keep the same key concepts and structure",
+        "Add comprehensive node and edge explanations"
+    ]
+    
+    verification_steps_sequence = [
+        "**SEQUENCE DIAGRAM SPECIFIC VERIFICATION**:",
+        "  - Search for EVERY `deactivate ParticipantName` in the diagram",
+        "  - Count how many `activate ParticipantName` exist for each participant",
+        "  - If counts don't match: either add missing `activate` or remove extra `deactivate`",
+        "  - Count all `activate X` statements for each participant",
+        "  - Count all `deactivate X` statements for each participant",
+        "  - Ensure counts are EQUAL for each participant",
+        "  - If not equal: FIX IT BEFORE RETURNING!"
+    ]
+    
+    if diagram_type == "sequence":
+        verification_steps = verification_steps_generic + verification_steps_sequence
+    else:
+        verification_steps = verification_steps_generic
+    
+    verification_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(verification_steps)])
+    
     prompt = f"""You are an expert at creating Mermaid diagrams for codebase visualization.
 
 A diagram you generated has a RENDERING ERROR. Your task is to FIX IT.
@@ -757,7 +906,7 @@ Diagram Type: {diagram_type}
 Key Concepts:
 {key_concepts_str}
 
-❌ ERROR THAT OCCURRED:
+❌ ERROR THAT OCCURRED (MOST IMPORTANT!!!):
 {error_message}
 
 🔴 CORRUPTED DIAGRAM CODE:
@@ -773,25 +922,17 @@ RETRIEVED SOURCE CODE:
 
 YOUR TASK: Fix the diagram to make it render correctly in Mermaid.
 
-COMMON MERMAID ERRORS AND FIXES:
-1. **Special characters in labels** → Wrap in quotes: A["Recall@10"]
-2. **Missing diagram type declaration** → Start with: {required_syntax}
-3. **Invalid node IDs** → Use alphanumeric IDs (no spaces/special chars)
-4. **Syntax errors in arrows** → Use --> or ->> correctly
-5. **Unclosed subgraphs** → Ensure every subgraph has "end"
-6. **Invalid style syntax** → Check color codes and property names
-7. **Duplicate node IDs** → Make all IDs unique
-8. **Invalid characters** → Remove or escape @, #, %, etc. in labels
+⚠️ CRITICAL: You MUST fix the syntax error. DO NOT return the same broken code!
+
+COMMON MERMAID ERRORS FOR {diagram_type.upper()} DIAGRAMS:
+{errors_text}
+{examples_section}
 
 DIAGRAM-SPECIFIC SYNTAX:
 {instructions}
 
 INSTRUCTIONS:
-1. Analyze the error message and identify the issue
-2. Fix the syntax error while preserving the diagram's intent
-3. Ensure the diagram is valid Mermaid syntax
-4. Keep the same key concepts and structure
-5. Add comprehensive node and edge explanations
+{verification_text}
 
 Return your response in JSON format:
 

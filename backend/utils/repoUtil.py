@@ -107,7 +107,7 @@ class RepoUtil:
         return len(tokens)
 
     @staticmethod
-    def read_file_as_document(full_path: str, root: str = None, truncate_large: bool = False) -> Document:
+    def read_file_as_document(full_path: str, root: str = None, truncate_large: bool = True) -> Document:
         """Read a file and return it as a Document object with metadata
         
         Args:
@@ -201,7 +201,7 @@ class RepoUtil:
                 file_path = os.path.join(dirpath, filename)
                 
                 # Use the shared read function
-                doc = RepoUtil.read_file_as_document(file_path, root=root, truncate_large=False)
+                doc = RepoUtil.read_file_as_document(file_path, root=root, truncate_large=True)
                 
                 if doc and doc.text.strip():  # Only add non-empty files
                     # Add source_folder to metadata

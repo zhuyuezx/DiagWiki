@@ -53,8 +53,9 @@ class WikiGenerator:
     
     def ensure_database(self):
         """Ensure database exists, create if needed."""
-        if not os.path.exists(self.db_path):
-            logger.info(f"Database not found for {self.root_path}, creating...")
+        db_file = os.path.join(self.db_path, "db.pkl")
+        if not os.path.exists(db_file):
+            logger.info(f"Database file not found at {db_file}, creating...")
             pipeline = DataPipeline(
                 db_name=self.db_name,
                 embedder_model=Const.EMBEDDING_MODEL,
@@ -69,6 +70,9 @@ class WikiGenerator:
     def initialize_rag(self):
         """Initialize RAG system and specialized modules."""
         if self.rag is None:
+            # Ensure database exists before loading
+            self.ensure_database()
+            
             self.rag = RAG()
             self.rag.load_database(self.db_path)
             logger.info(f"RAG initialized with {len(self.rag.transformed_docs)} documents")

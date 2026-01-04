@@ -711,7 +711,7 @@ Return ONLY the title text, nothing else."""
                 logger.info(f"💾 Cached Mermaid code to: {result['mermaid_file']}")
             
             # If this is a custom section, add it to the sections cache
-            if result.get('section_id', '').startswith('custom_'):
+            if self._is_custom_section(result.get('section_id', '')):
                 self._add_custom_section_to_cache(result)
             
             # Add to wiki RAG database for /askWiki endpoint
@@ -772,4 +772,42 @@ Return ONLY the title text, nothing else."""
                 
         except Exception as e:
             logger.error(f"Failed to add custom section to cache: {e}", exc_info=True)
+    
+    def _is_custom_section(self, section_id: str) -> bool:
+        """Check if a section is custom (not from /identifyDiagramSections).
+        
+        A section is custom if:
+        1. It starts with 'custom_' (legacy format), OR
+        2. It doesn't exist in the sections cache file from /identifyDiagramSections
+        
+        Returns:
+            True if section is custom, False if it's a predefined section
+        """
+        # Legacy check: old custom sections used custom_ prefix
+        if section_id.startswith('custom_'):
+            return True
+        
+        # Check if section exists in the cached sections from /identifyDiagramSections
+        try:
+            repo_name = os.path.basename(self.root_path)
+            page_id = repo_name.lower().replace(' ', '_').replace('/', '_')
+            sections_file = os.path.join(self.cache.diagrams_dir, f"{page_id}_sections.json")
+            
+            if not os.path.exists(sections_file):
+                # No sections file exists yet, so this is definitely custom
+                return True
+            
+            with open(sections_file, 'r', encoding='utf-8') as f:
+                sections_data = json.load(f)
+            
+            sections = sections_data.get('sections', [])
+            existing_ids = [s['section_id'] for s in sections]
+            
+            # If section_id not in predefined sections, it's custom
+            return section_id not in existing_ids
+            
+        except Exception as e:
+            logger.warning(f"Error checking if section is custom: {e}")
+            # On error, assume it's custom to be safe
+            return True
 

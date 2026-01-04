@@ -14,6 +14,7 @@
 	let panzoomInstance: any = null;
 	let isRendered = false;
 	let currentDiagramId = '';
+	let currentDiagramCode = ''; // Track diagram code changes
 	let renderCount = 0;
 	let zoomLevel = 1;
 	let showExportModal = false;
@@ -44,11 +45,13 @@
 		}
 	});
 
-	// Re-render when diagram changes
-	$: if (diagram && diagram.section_id !== currentDiagramId) {
+	// Re-render when diagram changes (section ID or content)
+	$: if (diagram && (diagram.section_id !== currentDiagramId || diagram.diagram?.mermaid_code !== currentDiagramCode)) {
 		currentDiagramId = diagram.section_id;
+		currentDiagramCode = diagram.diagram?.mermaid_code || '';
 		// Check if this diagram is already marked as corrupted
 		const isCorrupted = get(corruptedDiagrams).has(diagram.section_id);
+		
 		if (isCorrupted) {
 			const errorMessage = get(corruptedDiagrams).get(diagram.section_id) || 'Unknown error';
 			if (containerRef) {
@@ -482,8 +485,8 @@
 		</div>
 	</div>
 
-	<div class="flex-1 overflow-hidden relative bg-gray-50">
-		<div bind:this={containerRef} class="mermaid-container w-full h-full flex items-center justify-center"></div>
+	<div class="flex-1 overflow-auto relative bg-gray-50">
+		<div bind:this={containerRef} class="mermaid-container w-full h-full"></div>
 		<div class="absolute bottom-4 left-4 text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">
 			Drag to pan • Scroll to zoom • Click elements for details
 		</div>

@@ -188,7 +188,7 @@ class OllamaDocumentProcessor(DataComponent):
                     logger.error(f"Error processing document '{file_path}': {e}, skipping")
 
         if skipped_large_docs > 0:
-            logger.info(f"Skipped {skipped_large_docs} documents that exceeded token limit ({self.MAX_EMBEDDING_TOKENS} tokens)")
+            logger.info(f"Skipped {skipped_large_docs} documents that exceeded token limit ({Const.MAX_EMBEDDING_TOKENS} tokens)")
         logger.info(f"Successfully processed {len(successful_docs)}/{len(output)} documents with consistent embeddings")
         return successful_docs
 
