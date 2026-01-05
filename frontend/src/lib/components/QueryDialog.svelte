@@ -10,7 +10,7 @@
 
 	let prompt = '';
 	let selectedSectionId = '';
-	let selectedDiagramType: 'flowchart' | 'sequence' | 'class' | 'stateDiagram' | 'erDiagram' = 'flowchart';
+	let selectedDiagramType: 'auto' | 'flowchart' | 'sequence' | 'class' | 'stateDiagram' | 'erDiagram' = 'auto';
 	let referenceMode: 'auto' | 'manual' = 'auto';
 	let selectedFiles: string[] = [];
 	let selectedFileSizes: Map<string, number> = new Map();
@@ -29,6 +29,7 @@
 	                       totalSelectedSize > constants.MAX_RAG_CONTEXT_CHARS * 0.75 ? 'warning' : 'ok';
 
 	const diagramTypes = [
+		{ value: 'auto', label: 'Auto (Let LLM Determine)', description: 'AI chooses the best diagram type' },
 		{ value: 'flowchart', label: 'Flowchart', description: 'Process flows, system architecture' },
 		{ value: 'sequence', label: 'Sequence Diagram', description: 'Interactions over time' },
 		{ value: 'class', label: 'Class Diagram', description: 'Object-oriented structure' },
@@ -163,7 +164,8 @@
 						root_path: projectPath,
 						next_step_prompt: prompt,
 						wiki_name: sectionToGenerate.section_id,
-						is_new: true
+						is_new: true,
+						diagram_type: selectedDiagramType
 					})
 				});
 				

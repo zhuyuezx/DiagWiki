@@ -828,6 +828,7 @@ class ModifyOrCreateWikiRequest(BaseModel):
     next_step_prompt: str = Field(..., description="Detailed prompt for wiki generation/modification")
     wiki_name: str = Field(..., description="Name/ID of the wiki section to create or modify")
     is_new: bool = Field(..., description="Whether this is a new wiki section or modification of existing")
+    diagram_type: Optional[str] = Field(None, description="Diagram type: 'auto' to let LLM determine, or specific type (flowchart, sequence, class, stateDiagram, erDiagram)")
 
 
 @app.post("/wikiProblem")
@@ -913,7 +914,8 @@ async def modify_or_create_wiki(request: ModifyOrCreateWikiRequest = Body(...)):
             # Create new wiki section
             result = wiki_gen.create_wiki_section(
                 wiki_name=request.wiki_name,
-                prompt=request.next_step_prompt
+                prompt=request.next_step_prompt,
+                diagram_type=request.diagram_type
             )
         else:
             # Modify existing wiki section

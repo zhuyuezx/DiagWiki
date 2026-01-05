@@ -651,7 +651,8 @@ class WikiGenerator:
     def create_wiki_section(
         self,
         wiki_name: str,
-        prompt: str
+        prompt: str,
+        diagram_type: str = None
     ) -> Dict:
         """
         Create a new wiki section based on a detailed prompt.
@@ -659,6 +660,7 @@ class WikiGenerator:
         Args:
             wiki_name: ID/name for the new section
             prompt: Detailed creation prompt from problem analysis
+            diagram_type: Diagram type ('auto' or specific type like 'flowchart', 'sequence', etc.)
         
         Returns:
             Dict with the created wiki section
@@ -689,7 +691,8 @@ class WikiGenerator:
         creation_prompt = build_wiki_creation_prompt(
             wiki_name=wiki_name,
             creation_prompt=prompt,
-            codebase_context=codebase_context
+            codebase_context=codebase_context,
+            diagram_type=diagram_type
         )
         
         # Call LLM with timeout configuration
@@ -725,6 +728,19 @@ class WikiGenerator:
             if is_valid:
                 parsed = parse_mermaid_diagram(mermaid_code)
                 
+                # Extract unique source file paths from retrieved documents
+                source_files = []
+                seen_paths = set()
+                for doc in codebase_docs:
+                    if hasattr(doc, 'meta_data'):
+                        file_path = doc.meta_data.get('file_path', '')
+                        if file_path and file_path not in seen_paths:
+                            seen_paths.add(file_path)
+                            source_files.append({
+                                "file": file_path,
+                                "relevance": f"Used to generate {diagram_data.get('section_title', wiki_name)}"
+                            })
+                
                 # Structure the result
                 result = {
                     "status": "success",
@@ -740,6 +756,7 @@ class WikiGenerator:
                     },
                     "nodes": {},
                     "edges": {},
+                    "rag_sources": source_files,
                     "cached": False
                 }
                 

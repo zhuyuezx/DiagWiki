@@ -91,9 +91,9 @@ class MermaidDiagramParser:
             elif first_line.startswith('classdiagram'):
                 self.diagram_type = 'class'
             elif first_line.startswith('statediagram'):
-                self.diagram_type = 'state'
+                self.diagram_type = 'stateDiagram'
             elif first_line.startswith('erdiagram'):
-                self.diagram_type = 'er'
+                self.diagram_type = 'erDiagram'
         
         # Parse based on diagram type
         if self.diagram_type == 'flowchart':
@@ -102,6 +102,8 @@ class MermaidDiagramParser:
             self._parse_sequence(lines[1:])
         elif self.diagram_type == 'class':
             self._parse_class(lines[1:])
+        elif self.diagram_type == 'erDiagram':
+            self._parse_er(lines[1:])
         else:
             # Generic parsing for other types
             self._parse_generic(lines[1:])
@@ -220,6 +222,56 @@ class MermaidDiagramParser:
                     self.nodes[target] = MermaidNode(target, target, "class")
                 
                 self.edges.append(MermaidEdge(source, target, label, edge_type))
+    
+    def _parse_er(self, lines: List[str]):
+        """Parse ER (Entity-Relationship) diagram."""
+        in_entity_block = False
+        current_entity = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('%%'):  # Skip empty and comments
+                continue
+            
+            # Close entity block
+            if in_entity_block and line == '}':
+                in_entity_block = False
+                current_entity = None
+                continue
+            
+            # Skip attribute definitions inside entity blocks
+            if in_entity_block:
+                continue
+            
+            # Entity relationship: EntityA ||--o{ EntityB : relationship
+            # Patterns: ||--o{, ||--|{, }o--o{, }|..|{, etc.
+            rel_pattern = r'(\w+)\s+([|}][|o])?(--+|==+|\.\.+)([o|][{|])\s+(\w+)\s*:\s*(.+)?'
+            rel_match = re.match(rel_pattern, line)
+            if rel_match:
+                source = rel_match.group(1)
+                target = rel_match.group(5)
+                label = rel_match.group(6).strip() if rel_match.group(6) else None
+                
+                if source not in self.nodes:
+                    self.nodes[source] = MermaidNode(source, source, "entity")
+                if target not in self.nodes:
+                    self.nodes[target] = MermaidNode(target, target, "entity")
+                
+                self.edges.append(MermaidEdge(source, target, label, "relationship"))
+                continue
+            
+            # Entity definition with attributes: class EntityName {
+            entity_match = re.match(r'class\s+(\w+)\s*\{?', line)
+            if entity_match:
+                entity_name = entity_match.group(1)
+                if entity_name not in self.nodes:
+                    self.nodes[entity_name] = MermaidNode(entity_name, entity_name, "entity")
+                if not line.endswith('{'):
+                    # Single line definition (rare)
+                    continue
+                in_entity_block = True
+                current_entity = entity_name
+                continue
     
     def _parse_generic(self, lines: List[str]):
         """Generic parser for other diagram types."""

@@ -349,8 +349,8 @@ class WikiDiagramGenerator:
         source_files = []
         seen_paths = set()
         for doc in all_retrieved_docs:
-            if hasattr(doc, 'file_path'):
-                file_path = doc.file_path
+            if hasattr(doc, 'meta_data'):
+                file_path = doc.meta_data.get('file_path', '')
                 if file_path and file_path not in seen_paths:
                     seen_paths.add(file_path)
                     source_files.append({
@@ -651,6 +651,17 @@ Return ONLY the title text, nothing else."""
             diagram_description = diagram_data.get('diagram_description', '')
             node_explanations = diagram_data.get('node_explanations', {})
             edge_explanations = diagram_data.get('edge_explanations', {})
+            
+            # Strip markdown code fences if present (LLM sometimes adds them despite instructions)
+            mermaid_code = mermaid_code.strip()
+            if mermaid_code.startswith('```'):
+                # Remove opening fence (e.g., ```mermaid or ```mermaid.erDiagram or just ```)
+                lines = mermaid_code.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]  # Skip first line
+                if lines and lines[-1].strip() == '```':
+                    lines = lines[:-1]  # Skip last line
+                mermaid_code = '\n'.join(lines).strip()
             
             # Validate and parse mermaid code
             is_valid, validation_msg = validate_mermaid_syntax(mermaid_code)

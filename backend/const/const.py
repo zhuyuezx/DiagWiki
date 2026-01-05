@@ -99,7 +99,7 @@ class Const:
     MAX_RAG_CONTEXT_CHARS = 100000  # ~25K tokens
     
     # Maximum number of source files to include in RAG context
-    MAX_SOURCES = 15
+    MAX_SOURCES = 40
     
     # Maximum characters per file when reading manual references
     MAX_FILE_CHARS = 50000

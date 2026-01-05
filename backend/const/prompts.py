@@ -583,11 +583,26 @@ def build_single_diagram_prompt(
         
         "erDiagram": """
 - MUST start with: erDiagram
-- Show entities as tables
-- Include key attributes for each entity
-- Show relationships clearly (||--o{, etc.)
-- Label relationship cardinality
-- Focus on the logical data model"""
+- Define entities with attributes using this EXACT syntax:
+  EntityName {
+      type attribute
+      type attribute
+  }
+- CRITICAL: Do NOT use 'class EntityName {' - that's for class diagrams!
+- Use only: EntityName { ... } without the 'class' keyword
+- Show relationships: EntityA ||--o{ EntityB : relationship_name
+- Relationship cardinality: ||--o{ (one-to-many), }o--o{ (many-to-many), ||--|| (one-to-one)
+- Example:
+  erDiagram
+      CUSTOMER {
+          int id PK
+          string name
+      }
+      ORDER {
+          int id PK
+          int customer_id FK
+      }
+      CUSTOMER ||--o{ ORDER : places"""
     }
     
     # Map diagram types to their required Mermaid syntax prefixes
@@ -734,8 +749,10 @@ def build_diagram_correction_prompt(
 - Define states: state "Name" as id
 - Show transitions: id1 --> id2: event""",
         "erDiagram": """- MUST start with: erDiagram
-- Define entities and relationships
-- Use ||--o{ for relationship types"""
+- Define entities: EntityName { type attribute }
+- CRITICAL: Do NOT use 'class' keyword (that's for class diagrams!)
+- Use ||--o{ for relationship types
+- Example: CUSTOMER { int id } \nCUSTOMER ||--o{ ORDER : places"""
     }
     
     required_syntax = {
@@ -841,8 +858,14 @@ def build_diagram_correction_prompt(
     ]
     
     common_errors_er = [
+        "**CRITICAL: Using 'class' keyword** → Parse error on line X: got 'BLOCK_START'",
+        "   - WRONG: class User { string id ... }",
+        "   - RIGHT: User { string id ... }",
+        "   - The 'class' keyword is for CLASS DIAGRAMS only!",
+        "   - ER diagrams use: EntityName { type attribute }",
         "**Invalid relationship cardinality** → Use ||--o{ , |o--o| , etc.",
-        "**Missing entity definition** → Define entities before relationships"
+        "**Missing entity definition** → Define entities before relationships",
+        "**Syntax error in attribute definition** → Use: EntityName { type attribute } not class EntityName { }"
     ]
     
     # Select errors based on diagram type
@@ -1157,7 +1180,8 @@ Respond with valid JSON only:"""
 def build_wiki_creation_prompt(
     wiki_name: str,
     creation_prompt: str,
-    codebase_context: str
+    codebase_context: str,
+    diagram_type: str = None
 ) -> str:
     """
     Build prompt for creating a new wiki section.
@@ -1166,10 +1190,19 @@ def build_wiki_creation_prompt(
         wiki_name: Name/ID of the new section
         creation_prompt: Detailed requirements from problem analysis
         codebase_context: Relevant code snippets
+        diagram_type: Optional diagram type ('auto' or specific type)
     
     Returns:
         Prompt string for creating new wiki content
     """
+    # Determine diagram type instruction
+    if diagram_type and diagram_type != 'auto':
+        diagram_type_instruction = f'You MUST use diagram type: {diagram_type}'
+        diagram_type_field = f'"diagram_type": "{diagram_type}",'
+    else:
+        diagram_type_instruction = 'Choose the most appropriate diagram type for the content'
+        diagram_type_field = '"diagram_type": "flowchart|sequence|class|stateDiagram|erDiagram",'
+    
     prompt = f"""You are creating a new wiki section for a codebase documentation system.
 
 SECTION NAME: {wiki_name}
@@ -1185,7 +1218,7 @@ Generate a diagram section with the following JSON structure:
     "section_id": "{wiki_name}",
     "section_title": "Human-readable title",
     "section_description": "What this diagram explains",
-    "diagram_type": "flowchart|sequence|class|stateDiagram|erDiagram",
+    {diagram_type_field}
     "key_concepts": ["concept1", "concept2", "concept3"],
     "mermaid_code": "Complete Mermaid diagram code here",
     "diagram_description": "What the diagram shows",
@@ -1198,11 +1231,21 @@ Generate a diagram section with the following JSON structure:
 }}
 
 Guidelines:
-- Choose the most appropriate diagram type for the content
+- {diagram_type_instruction}
 - Include 5-10 key concepts
 - Generate valid Mermaid syntax
 - Provide detailed explanations for all nodes and edges
 - Base content on the codebase context provided
+- STYLING RULES (Professional Style):
+  * Use MINIMAL and SELECTIVE coloring - most nodes should use default styling
+  * Apply colors ONLY to emphasize critical nodes (entry points, error states, key decision points)
+  * Use a consistent, muted color palette:
+    - Entry/Start points: style X fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    - Error/Critical states: style Y fill:#ffebee,stroke:#c62828,stroke-width:2px
+    - Success/End states: style Z fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    - Key decision points: style W fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+  * NO random rainbow colors (avoid #f0f8ff, #ffe4b5, #98fb98, #ff6347, #87ceeb, #9370db, etc.)
+  * Leave most nodes unstyled for a clean, professional appearance
 
 Respond with valid JSON only:"""
     
