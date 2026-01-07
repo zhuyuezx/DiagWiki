@@ -1016,13 +1016,20 @@ async def get_diagram_references(request: DiagramReferencesRequest = Body(...)):
     Get the source files (RAG references) used to generate a specific diagram.
     
     This endpoint retrieves the list of source files that were analyzed
-    via RAG to generate the specified diagram section.
+    via RAG to generate the specified diagram section. Sources are aggregated
+    by filename with detailed line segment information.
     
     Args:
         request: DiagramReferencesRequest with root_path and section_id
         
     Returns:
-        JSON with rag_sources array containing file paths and relevance
+        JSON with rag_sources array, where each entry contains:
+        - file: relative file path
+        - segments: array of line segments from this file
+          - start_line: integer start line number
+          - end_line: integer end line number
+          - preview: text preview of the segment
+        - relevance: description of how it was used
     """
     try:
         # Validate folder

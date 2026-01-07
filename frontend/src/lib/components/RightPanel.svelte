@@ -4,7 +4,15 @@
 	import { onMount } from 'svelte';
 
 	let activeTab: 'details' | 'references' = 'details';
-	let sourceFiles: Array<{file: string, relevance: string}> = [];
+	let sourceFiles: Array<{
+		file: string;
+		segments: Array<{
+			start_line: number;
+			end_line: number;
+			preview: string;
+		}>;
+		relevance: string;
+	}> = [];
 	let loadingReferences = false;
 
 	function handleClose() {
@@ -216,13 +224,32 @@
 					{:else if sourceFiles.length > 0}
 						<div class="space-y-3">
 							{#each sourceFiles as source, i}
-								<div class="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors">
+								<div class="p-3 bg-gray-50 rounded border border-gray-200">
 									<div class="flex items-start gap-3">
 										<span class="text-gray-400 text-xs font-mono mt-0.5 flex-shrink-0">{i + 1}</span>
 										<div class="flex-1 min-w-0">
-											<p class="text-sm font-mono text-gray-900 break-all mb-1">{source.file}</p>
+											<p class="text-sm font-mono text-gray-900 break-all font-semibold">{source.file}</p>
+											
+											{#if source.segments && source.segments.length > 0}
+												<div class="mt-2 space-y-1">
+													<p class="text-xs text-gray-600 font-medium">
+														{source.segments.length} segment{source.segments.length > 1 ? 's' : ''}:
+													</p>
+													{#each source.segments as segment, j}
+														<div class="ml-3 pl-3 border-l-2 border-blue-300 py-1">
+															<p class="text-xs text-blue-600 font-mono">
+																lines {segment.start_line}-{segment.end_line}
+															</p>
+															{#if segment.preview}
+																<p class="text-xs text-gray-500 italic mt-0.5">{segment.preview}</p>
+															{/if}
+														</div>
+													{/each}
+												</div>
+											{/if}
+											
 											{#if source.relevance}
-												<p class="text-xs text-gray-600">{source.relevance}</p>
+												<p class="text-xs text-gray-600 mt-2">{source.relevance}</p>
 											{/if}
 										</div>
 									</div>

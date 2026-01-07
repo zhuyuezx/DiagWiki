@@ -424,19 +424,14 @@ class WikiDiagramGenerator:
         # Call LLM for diagram
         diagram_data = self._generate_diagram_with_llm(diagram_prompt)
         
-        # Extract unique source file paths from retrieved documents
-        source_files = []
-        seen_paths = set()
-        for doc in all_retrieved_docs:
-            if hasattr(doc, 'meta_data'):
-                file_path = doc.meta_data.get('file_path', '')
-                if file_path and file_path not in seen_paths:
-                    seen_paths.add(file_path)
-                    source_files.append({
-                        "file": file_path,
-                        "relevance": f"Used to generate {section_title}"
-                    })
-        logger.info(f"Extracted {len(source_files)} unique source files for diagram generation, originally retrieved {len(all_retrieved_docs)} documents")
+        # Aggregate source files by filename with segments
+        from utils.wiki_generator import _aggregate_sources_by_file
+        source_files = _aggregate_sources_by_file(
+            all_retrieved_docs,
+            self.root_path,
+            f"Used to generate {section_title}"
+        )
+        logger.info(f"Aggregated {len(source_files)} source files from {len(all_retrieved_docs)} chunks")
         # Process the diagram response
         result = self._process_diagram_response(
             diagram_data,
@@ -522,18 +517,13 @@ class WikiDiagramGenerator:
         # Call LLM to fix the diagram
         diagram_data = self._generate_diagram_with_llm(correction_prompt)
         
-        # Extract source files
-        source_files = []
-        seen_paths = set()
-        for doc in all_retrieved_docs:
-            if hasattr(doc, 'meta_data'):
-                file_path = doc.meta_data.get('file_path', '')
-                if file_path and file_path not in seen_paths:
-                    seen_paths.add(file_path)
-                    source_files.append({
-                        "file": file_path,
-                        "relevance": f"Used to fix {section_title}"
-                    })
+        # Aggregate source files by filename with segments
+        from utils.wiki_generator import _aggregate_sources_by_file
+        source_files = _aggregate_sources_by_file(
+            all_retrieved_docs,
+            self.root_path,
+            f"Used to fix {section_title}"
+        )
         
         # Process the corrected diagram
         result = self._process_diagram_response(

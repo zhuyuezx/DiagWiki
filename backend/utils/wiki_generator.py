@@ -10,7 +10,10 @@ This module orchestrates wiki generation using specialized modules:
 import os
 import json
 import logging
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from adalflow.core.types import Document
 
 from utils.rag import RAG
 from utils.repoUtil import RepoUtil
@@ -29,6 +32,106 @@ from adalflow.core.types import ModelType
 from const.const import get_llm_client
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_line_info(doc: 'Document', root_path: str) -> dict:
+    """
+    Extract line range information from a document chunk.
+    
+    Args:
+        doc: Document with text and metadata
+        root_path: Root path to construct full file path
+    
+    Returns:
+        dict with file, start_line, end_line, and text preview
+    """
+    file_path = doc.meta_data.get('file_path', 'unknown') if hasattr(doc, 'meta_data') else 'unknown'
+    chunk_text = doc.text if hasattr(doc, 'text') else ''
+    
+    # Try to estimate line range by reading the file and finding the chunk
+    start_line = None
+    end_line = None
+    
+    if file_path != 'unknown' and chunk_text:
+        try:
+            full_path = os.path.join(root_path, file_path)
+            if os.path.exists(full_path):
+                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    file_content = f.read()
+                
+                # Use the first 100 characters (stripped) to locate the chunk
+                # TextSplitter may modify the chunk slightly, so we use the beginning
+                chunk_start = chunk_text[:100].strip()
+                
+                if chunk_start and chunk_start in file_content:
+                    # Count lines up to this point
+                    position = file_content.index(chunk_start)
+                    start_line = file_content[:position].count('\n') + 1
+                    
+                    # Count lines in the chunk
+                    chunk_lines = chunk_text.count('\n')
+                    end_line = start_line + chunk_lines
+        except Exception as e:
+            logger.debug(f"Could not extract line info from {file_path}: {e}")
+    
+    # Create preview (first 100 chars, single line)
+    preview = chunk_text[:150].strip().replace('\n', ' ')
+    if len(preview) > 100:
+        preview = preview[:100] + '...'
+    
+    return {
+        "file": file_path,
+        "start_line": start_line,
+        "end_line": end_line,
+        "preview": preview
+    }
+
+
+def _aggregate_sources_by_file(docs: list, root_path: str, relevance_msg: str) -> list:
+    """
+    Aggregate document chunks by filename with segment information.
+    
+    Args:
+        docs: List of documents from RAG retrieval
+        root_path: Root path for line extraction
+        relevance_msg: Message describing how sources were used
+    
+    Returns:
+        List of aggregated sources with segments
+    """
+    # Group chunks by file
+    file_segments = {}
+    for doc in docs:
+        line_info = _extract_line_info(doc, root_path)
+        file_path = line_info['file']
+        
+        if file_path not in file_segments:
+            file_segments[file_path] = []
+        
+        # Only add segments with valid line numbers
+        if line_info['start_line'] and line_info['end_line']:
+            file_segments[file_path].append({
+                "start_line": line_info['start_line'],
+                "end_line": line_info['end_line'],
+                "preview": line_info['preview']
+            })
+    
+    # Convert to list format
+    aggregated = []
+    for file_path, segments in file_segments.items():
+        # Sort segments by start line
+        segments.sort(key=lambda s: s['start_line'])
+        
+        aggregated.append({
+            "file": file_path,
+            "segments": segments,
+            "relevance": relevance_msg
+        })
+    
+    # Sort by filename for consistency
+    aggregated.sort(key=lambda x: x['file'])
+    
+    return aggregated
 
 
 class WikiGenerator:
@@ -822,18 +925,12 @@ class WikiGenerator:
             if is_valid:
                 parsed = parse_mermaid_diagram(mermaid_code)
                 
-                # Extract unique source file paths from retrieved documents
-                source_files = []
-                seen_paths = set()
-                for doc in codebase_docs:
-                    if hasattr(doc, 'meta_data'):
-                        file_path = doc.meta_data.get('file_path', '')
-                        if file_path and file_path not in seen_paths:
-                            seen_paths.add(file_path)
-                            source_files.append({
-                                "file": file_path,
-                                "relevance": f"Used to generate {diagram_data.get('section_title', wiki_name)}"
-                            })
+                # Aggregate source files by filename with segments
+                source_files = _aggregate_sources_by_file(
+                    codebase_docs,
+                    self.root_path,
+                    f"Used to generate {diagram_data.get('section_title', wiki_name)}"
+                )
                 
                 # Structure the result
                 result = {
@@ -1010,14 +1107,12 @@ class WikiGenerator:
             if is_valid:
                 parsed = parse_mermaid_diagram(mermaid_code)
                 
-                # Structure the result with RAG sources
-                rag_sources = [
-                    {
-                        "file": doc.meta_data.get('file_path', 'unknown'),
-                        "relevance": f'Used to modify {diagram_data.get("section_title", wiki_name)}'
-                    }
-                    for doc in codebase_docs
-                ]
+                # Aggregate source files by filename with segments
+                rag_sources = _aggregate_sources_by_file(
+                    codebase_docs,
+                    self.root_path,
+                    f'Used to modify {diagram_data.get("section_title", wiki_name)}'
+                )
                 
                 result = {
                     "status": "success",
