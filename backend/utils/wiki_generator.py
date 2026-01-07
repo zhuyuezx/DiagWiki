@@ -26,8 +26,11 @@ from const.prompts import (
     build_wiki_structure_prompt,
     build_wiki_page_prompt,
     STRUCTURE_ANALYSIS_QUERIES,
-    build_page_analysis_queries
+    build_page_analysis_queries,
+    build_wiki_modification_prompt,
+    build_wiki_problem_analysis_prompt
 )
+
 from adalflow.core.types import ModelType
 
 logger = logging.getLogger(__name__)
@@ -584,7 +587,6 @@ class WikiGenerator:
         Yields:
             Text chunks from LLM response
         """
-        from const.prompts import build_wiki_problem_analysis_prompt
         from adalflow.core.db import LocalDB
         import ollama
         
@@ -874,7 +876,6 @@ class WikiGenerator:
             # Manual mode: extract chunks for specified files
             logger.info(f"Creating wiki with {len(reference_files)} manually selected files")
             diagram_gen = WikiDiagramGenerator(self.root_path, self.cache, self.rag)
-            diagram_gen.rag = self.rag
             _, _, codebase_docs = diagram_gen._extract_file_chunks_from_db(reference_files)
             
             codebase_context = "\n\n".join([
@@ -1044,7 +1045,6 @@ class WikiGenerator:
         Returns:
             Dict with the modified wiki section
         """
-        from const.prompts import build_wiki_modification_prompt
         from utils.mermaid_parser import parse_mermaid_diagram, validate_mermaid_syntax
         
         # Ensure RAG is initialized
@@ -1071,9 +1071,7 @@ class WikiGenerator:
         if reference_files:
             # Manual mode: extract chunks for specified files
             logger.info(f"Modifying wiki with {len(reference_files)} manually selected files")
-            from utils.wiki_diagram import WikiDiagramGenerator
-            diagram_gen = WikiDiagramGenerator(self.root_path, self.cache)
-            diagram_gen.rag = self.rag
+            diagram_gen = WikiDiagramGenerator(self.root_path, self.cache, self.rag)
             _, _, codebase_docs = diagram_gen._extract_file_chunks_from_db(reference_files)
             
             codebase_context = "\n\n".join([
