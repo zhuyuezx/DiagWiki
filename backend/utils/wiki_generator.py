@@ -849,7 +849,8 @@ class WikiGenerator:
         self,
         wiki_name: str,
         prompt: str,
-        diagram_type: str = None
+        diagram_type: str = None,
+        reference_files: List[str] = None
     ) -> Dict:
         """
         Create a new wiki section based on a detailed prompt.
@@ -858,6 +859,7 @@ class WikiGenerator:
             wiki_name: ID/name for the new section
             prompt: Detailed creation prompt from problem analysis
             diagram_type: Diagram type ('auto' or specific type like 'flowchart', 'sequence', etc.)
+            reference_files: Optional list of file paths for manual reference mode
         
         Returns:
             Dict with the created wiki section
@@ -869,20 +871,34 @@ class WikiGenerator:
         self.initialize_rag()
         
         # Query codebase for relevant context
-        try:
-            rag_answer, codebase_docs = self.rag.call(
-                query=prompt,
-                top_k=Const.RAG_TOP_K,
-                use_reranking=True
-            )
+        if reference_files:
+            # Manual mode: extract chunks for specified files
+            logger.info(f"Creating wiki with {len(reference_files)} manually selected files")
+            diagram_gen = WikiDiagramGenerator(self.root_path, self.cache, self.rag)
+            diagram_gen.rag = self.rag
+            _, _, codebase_docs = diagram_gen._extract_file_chunks_from_db(reference_files)
             
             codebase_context = "\n\n".join([
                 f"[{doc.meta_data.get('file_path', 'unknown')}]\n{doc.text[:800]}"
                 for doc in codebase_docs[:20]
             ])
-        except Exception as e:
-            logger.warning(f"Could not query codebase: {e}")
-            codebase_context = "Codebase context unavailable."
+        else:
+            # Automatic mode: use RAG
+            try:
+                rag_answer, codebase_docs = self.rag.call(
+                    query=prompt,
+                    top_k=Const.RAG_TOP_K,
+                    use_reranking=True
+                )
+                
+                codebase_context = "\n\n".join([
+                    f"[{doc.meta_data.get('file_path', 'unknown')}]\n{doc.text[:800]}"
+                    for doc in codebase_docs[:20]
+                ])
+            except Exception as e:
+                logger.warning(f"Could not query codebase: {e}")
+                codebase_context = "Codebase context unavailable."
+                codebase_docs = []
         
         # Build creation prompt
         creation_prompt = build_wiki_creation_prompt(
@@ -1015,7 +1031,8 @@ class WikiGenerator:
     def modify_wiki_section(
         self,
         wiki_name: str,
-        modification_prompt: str
+        modification_prompt: str,
+        reference_files: List[str] = None
     ) -> Dict:
         """
         Modify an existing wiki section.
@@ -1023,6 +1040,7 @@ class WikiGenerator:
         Args:
             wiki_name: ID/name of the section to modify
             modification_prompt: What to change
+            reference_files: Optional list of file paths for manual reference mode
         
         Returns:
             Dict with the modified wiki section
@@ -1051,20 +1069,35 @@ class WikiGenerator:
             }
         
         # Query codebase for updated context
-        try:
-            rag_answer, codebase_docs = self.rag.call(
-                query=f"{existing_content.get('section_title', '')} {modification_prompt}",
-                top_k=Const.RAG_TOP_K,
-                use_reranking=True
-            )
+        if reference_files:
+            # Manual mode: extract chunks for specified files
+            logger.info(f"Modifying wiki with {len(reference_files)} manually selected files")
+            from utils.wiki_diagram import WikiDiagramGenerator
+            diagram_gen = WikiDiagramGenerator(self.root_path, self.cache)
+            diagram_gen.rag = self.rag
+            _, _, codebase_docs = diagram_gen._extract_file_chunks_from_db(reference_files)
             
             codebase_context = "\n\n".join([
                 f"[{doc.meta_data.get('file_path', 'unknown')}]\n{doc.text[:800]}"
                 for doc in codebase_docs[:20]
             ])
-        except Exception as e:
-            logger.warning(f"Could not query codebase: {e}")
-            codebase_context = "Codebase context unavailable."
+        else:
+            # Automatic mode: use RAG
+            try:
+                rag_answer, codebase_docs = self.rag.call(
+                    query=f"{existing_content.get('section_title', '')} {modification_prompt}",
+                    top_k=Const.RAG_TOP_K,
+                    use_reranking=True
+                )
+                
+                codebase_context = "\n\n".join([
+                    f"[{doc.meta_data.get('file_path', 'unknown')}]\n{doc.text[:800]}"
+                    for doc in codebase_docs[:20]
+                ])
+            except Exception as e:
+                logger.warning(f"Could not query codebase: {e}")
+                codebase_context = "Codebase context unavailable."
+                codebase_docs = []
         
         # Build modification prompt
         mod_prompt = build_wiki_modification_prompt(

@@ -368,10 +368,17 @@ class WikiDiagramGenerator:
         Returns:
             Dict with diagram, nodes with explanations, edges with explanations
         """
-        # Check cache first
+        # Check cache first (with reference files hash if manual mode)
         if use_cache:
-            cache_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.json")
-            mermaid_file = os.path.join(self.cache.diagrams_dir, f"diag_{section_id}.mmd")
+            cache_key = section_id
+            if reference_files:
+                # Include hash of reference files in cache key for manual mode
+                import hashlib
+                files_hash = hashlib.md5(",".join(sorted(reference_files)).encode()).hexdigest()[:8]
+                cache_key = f"{section_id}_ref_{files_hash}"
+            
+            cache_file = os.path.join(self.cache.diagrams_dir, f"diag_{cache_key}.json")
+            mermaid_file = os.path.join(self.cache.diagrams_dir, f"diag_{cache_key}.mmd")
             if os.path.exists(cache_file):
                 logger.info(f"✅ Using cached diagram from: {cache_file}")
                 with open(cache_file, 'r', encoding='utf-8') as f:
@@ -379,6 +386,7 @@ class WikiDiagramGenerator:
                     cached_data['cached'] = True
                     cached_data['cache_file'] = cache_file
                     cached_data['mermaid_file'] = mermaid_file if os.path.exists(mermaid_file) else None
+                    cached_data['section_id'] = section_id  # Use original section_id
                     return cached_data
         
         # Ensure RAG is initialized
@@ -393,9 +401,9 @@ class WikiDiagramGenerator:
         
         # Perform RAG queries or use manual reference files
         if reference_files:
-            # Manual mode: read specified files directly
+            # Manual mode: extract chunks for specified files from database
             logger.info(f"Using {len(reference_files)} manually selected reference files")
-            rag_context, retrieved_sources, all_retrieved_docs = self._read_reference_files(reference_files)
+            rag_context, retrieved_sources, all_retrieved_docs = self._extract_file_chunks_from_db(reference_files)
         else:
             # Automatic mode: use RAG with full context
             repo_name = os.path.basename(self.root_path)
@@ -695,6 +703,81 @@ Return ONLY the title text, nothing else."""
         logger.info(f"Retrieved sources size: {len(retrieved_sources)} chars (~{len(retrieved_sources)//4} tokens)")
         
         return rag_context, retrieved_sources, all_retrieved_docs
+    
+    def _extract_file_chunks_from_db(self, file_paths: List[str]):
+        """
+        Extract all document chunks for specified files from the RAG database.
+        
+        This properly retrieves chunks that were created by TextSplitter,
+        unlike _read_reference_files which reads entire file content.
+        
+        Args:
+            file_paths: List of file paths relative to root_path
+            
+        Returns:
+            Tuple of (rag_context, retrieved_sources, all_docs)
+        """
+        logger.info(f"Extracting chunks for {len(file_paths)} manually selected files from database")
+        
+        if not self.rag or not self.rag.transformed_docs:
+            logger.warning("RAG not initialized or no transformed docs available")
+            return self._read_reference_files(file_paths)
+        
+        # Filter chunks that match the selected files
+        all_docs = []
+        for doc in self.rag.transformed_docs:
+            if hasattr(doc, 'meta_data'):
+                doc_file_path = doc.meta_data.get('file_path', '')
+                # Match against selected files
+                if doc_file_path in file_paths:
+                    all_docs.append(doc)
+        
+        if not all_docs:
+            logger.warning(f"No chunks found in database for selected files: {file_paths}")
+            logger.info("Falling back to reading files directly")
+            return self._read_reference_files(file_paths)
+        
+        logger.info(f"Found {len(all_docs)} chunks across {len(file_paths)} files")
+        
+        # Build context from chunks
+        rag_context_parts = []
+        retrieved_sources_parts = []
+        
+        # Group by file for better organization
+        from collections import defaultdict
+        chunks_by_file = defaultdict(list)
+        for doc in all_docs:
+            file_path = doc.meta_data.get('file_path', 'unknown')
+            chunks_by_file[file_path].append(doc)
+        
+        # Build context organized by file
+        source_idx = 1
+        for file_path in file_paths:
+            if file_path not in chunks_by_file:
+                continue
+            
+            chunks = chunks_by_file[file_path]
+            logger.info(f"  {file_path}: {len(chunks)} chunks")
+            
+            # Combine all chunks for this file
+            file_content = "\n\n".join([doc.text for doc in chunks])
+            
+            # Add to context
+            rag_context_parts.append(f"File: {file_path}\n{file_content}")
+            
+            # Add to sources with preview
+            preview = file_content[:Const.SOURCE_PREVIEW_LENGTH]
+            retrieved_sources_parts.append(
+                f"Source {source_idx} ({file_path}): {len(chunks)} segments\n{preview}"
+            )
+            source_idx += 1
+        
+        rag_context = "\n\n".join(rag_context_parts)
+        retrieved_sources = "\n\n".join(retrieved_sources_parts)
+        
+        logger.info(f"Extracted context: {len(rag_context)} chars from {len(all_docs)} chunks")
+        
+        return rag_context, retrieved_sources, all_docs
     
     def _read_reference_files(self, file_paths: List[str]):
         """

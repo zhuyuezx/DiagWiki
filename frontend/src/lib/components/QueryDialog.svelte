@@ -157,6 +157,7 @@
 			
 			if (isNewCustomSection) {
 				// For custom diagrams, use the create wiki endpoint
+				const referenceFiles = referenceMode === 'manual' ? selectedFiles : undefined;
 				const response = await fetch('http://localhost:8001/modifyOrCreateWiki', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -165,7 +166,8 @@
 						next_step_prompt: prompt,
 						wiki_name: sectionToGenerate.section_id,
 						is_new: true,
-						diagram_type: selectedDiagramType
+						diagram_type: selectedDiagramType,
+						reference_files: referenceFiles
 					})
 				});
 				
