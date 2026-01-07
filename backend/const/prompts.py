@@ -802,7 +802,9 @@ def build_single_diagram_prompt(
 - MUST start with: stateDiagram-v2
 - Show all important states
 - Clearly mark initial state with [*]
-- Show transitions with labeled arrows
+- CRITICAL: Use state diagram syntax for labeled transitions: State1 --> State2 : label
+  * The label comes AFTER the arrow with a colon (:)
+  * Example: CheckUserAuth --> LoadWorkshopPage : User Authenticated
 - Include conditional transitions where relevant
 - Mark final states""",
         
@@ -1091,6 +1093,13 @@ def build_diagram_correction_prompt(
     ]
     
     common_errors_state = [
+        """**CRITICAL: Using flowchart label syntax '-- text -->'** → Parse error: got 'INVALID'
+   - State diagrams do NOT use flowchart's '-- text -->' syntax!
+   - WRONG: `StateA -- Label Text --> StateB` (flowchart syntax)
+   - RIGHT: `StateA --> StateB : Label Text` (state diagram syntax)
+   - In state diagrams, the label comes AFTER the arrow with a colon
+   - Example error: "CheckUserAuth -- User Authenticated --> LoadWorkshopPage"
+   - Correct fix: "CheckUserAuth --> LoadWorkshopPage : User Authenticated\"""",
         "**Invalid state transitions** → Use --> for transitions with optional labels",
         "**Unclosed state blocks** → Ensure composite states have proper nesting"
     ]

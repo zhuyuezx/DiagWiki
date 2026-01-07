@@ -28,7 +28,10 @@ Traditional documentation becomes outdated quickly and is text-heavy. DiagWiki s
 
 - Python 3.12+
 - Node.js 18+
-- Ollama with `qwen3-coder:30b` model (or configure your preferred model, my laptop has 48GB RAM and runs it smoothly, if you have less RAM consider using a smaller model)
+- Ollama running locally (for LLM inference)
+    - Use `ollama pull [model_name]` to download models
+    - Generation Model tested: `qwen2.5-coder:7b`, `qwen3-coder:30b`
+    - Embedding Model tested: `nomic-embed-text`
 
 ### Backend Setup
 
