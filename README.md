@@ -4,7 +4,7 @@
 
 DiagWiki analyzes your code and generates diagram-based wiki pages that explain how your system works. Instead of reading walls of text, you explore interactive diagrams where you can click on any component to understand its role.
 
-[Demo video coming soon]
+[![Demo Video](https://img.youtube.com/vi/NtdctuuEF_8/0.jpg)](https://youtu.be/NtdctuuEF_8)
 
 ## What It Solves
 
