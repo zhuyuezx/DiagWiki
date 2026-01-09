@@ -1,21 +1,19 @@
 # DiagWiki
 
-**Turn your codebase into interactive visual documentation automatically.**
+## Explaining Code with Interactive Diagrams, no api calls, no privacy concerns!
 
-DiagWiki analyzes your code and generates diagram-based wiki pages that explain how your system works. Instead of reading walls of text, you explore interactive diagrams where you can click on any component to understand its role.
+DiagWiki analyzes your code and generates diagram-based wiki pages that explain how your system works. Instead of reading walls of text, you explore interactive diagrams where you can click on any component to understand its role. 
+
+It is a local deployment tool that leverages large language models (LLMs) running on your machine via [Ollama](https://ollama.ai), ensuring your code never leaves your environment. **So, no expensive API calls or data privacy concerns!**
 
 ## Click the image below to watch the demo video:
 [![Demo Video](https://img.youtube.com/vi/NtdctuuEF_8/0.jpg)](https://youtu.be/NtdctuuEF_8)
 
 ## What It Solves
 
-Documentation gets outdated fast and is hard to maintain. Reading code without context is time-consuming.
-
-DiagWiki solves this by:
-- **Auto-generating** diagrams from your actual code
-- **Visual-first** - diagrams show structure better than text
-- **Interactive** - click components for detailed explanations
-- **Always current** - regenerate anytime your code changes
+1. Understand complex codebase and present architecture visually with query chat boxes for clarity
+2. Generate accurate, detailed diagrams automatically from code for documentation
+3. Enable complete control of any step of the diagram generation process - either fully automatic or use instruction & designated files to guide the process.
 
 ## Use DiagWiki to visualize this project itself
 
@@ -65,7 +63,7 @@ npm install
 3. **Launch**
 
 ```bash
-# From project root
+# From project root, in one command:
 ./launch.sh
 ```
 
@@ -82,7 +80,7 @@ cd frontend
 npm run dev
 ```
 
-Access at `http://localhost:5173` on default.
+Access application at `http://localhost:5173` on default.
 
 ## Technical Stack
 
@@ -97,7 +95,7 @@ Access at `http://localhost:5173` on default.
 - **Mermaid.js**: Industry-standard diagram syntax. Supports flowcharts, sequence diagrams, class diagrams, state diagrams, and ER diagrams.
 
 **Stack:**
-- Backend: Python, FastAPI, AdalFlow (RAG), Ollama (LLM), ChromaDB
+- Backend: Python, FastAPI, AdalFlow (RAG), Ollama (LLM)
 - Frontend: SvelteKit, TypeScript, Mermaid.js
 
 ## License
