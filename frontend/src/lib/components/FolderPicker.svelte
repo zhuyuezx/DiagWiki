@@ -1,11 +1,23 @@
 <script lang="ts">
-	import { currentProject, projectHistory, addToHistory, isAnalyzing, identifiedSections, openDiagramTab, generatedDiagrams, diagramCache, generateRequestSent, availableSections, failedSections } from '$lib/stores';
+	import { currentProject, projectHistory, addToHistory, isAnalyzing, identifiedSections, openDiagramTab, generatedDiagrams, diagramCache, generateRequestSent, availableSections, failedSections, selectedLanguage, updateProjectDiagramCount } from '$lib/stores';
 	import { identifyDiagramSections, generateSectionDiagram } from '$lib/api';
 	import { retryWithBackoff, RETRY_MAX } from '$lib/retry';
 	import type { WikiSection } from '$lib/types';
 
 	let folderPath = '';
 	let error = '';
+	
+	const languages = [
+		{ code: 'en', name: '🇬🇧 EN' },
+		{ code: 'zh', name: '🇨🇳 ZH' },
+		{ code: 'es', name: '🇪🇸 ES' },
+		{ code: 'ja', name: '🇯🇵 JA' },
+		{ code: 'kr', name: '🇰🇷 KR' },
+		{ code: 'vi', name: '🇻🇳 VI' },
+		{ code: 'pt', name: '🇵🇹 PT' },
+		{ code: 'fr', name: '🇫🇷 FR' },
+		{ code: 'ru', name: '🇷🇺 RU' }
+	];
 	
 	// Handle file picker (picks a directory)
 	async function handleFilePicker() {
@@ -49,7 +61,7 @@
 		try {
 			currentProject.set(folderPath);
 			
-			const result = await identifyDiagramSections(folderPath);
+			const result = await identifyDiagramSections(folderPath, $selectedLanguage);
 			// Store sections in map keyed by project path
 			identifiedSections.update(map => {
 				const newMap = new Map(map);
@@ -109,7 +121,7 @@
 				});
 				
 				// Use retry wrapper instead of direct call
-				const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section), section.section_id);
+				const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section, undefined, $selectedLanguage), section.section_id);
 
 				availableSections.update(map => {
 					const sectionsSet = map.get(folderPath) || new Set<WikiSection>();
@@ -175,7 +187,7 @@
 		});
 		
 		try {
-			const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section), section.section_id);
+			const diagram = await retryWithBackoff(() => generateSectionDiagram(folderPath, section, undefined, $selectedLanguage), section.section_id);
 			
 			availableSections.update(map => {
 				const sectionsSet = map.get(folderPath) || new Set<WikiSection>();
@@ -226,35 +238,50 @@
 
 		<!-- Folder Input Card -->
 		<div class="bg-white rounded-xl shadow-lg p-8 mb-8">
-			<label for="folder" class="block text-sm font-semibold text-gray-700 mb-3">
-				Project Folder Path
-			</label>
-			<div class="flex gap-3 mb-3">
-				<input
-					id="folder"
-					type="text"
-					bind:value={folderPath}
-					placeholder="/path/to/your/project"
-					class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-					on:keydown={(e) => e.key === 'Enter' && handleAnalyze()}
-				/>
-				<button
-					on:click={handleFilePicker}
-					class="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300"
-					title="Browse for folder"
-				>
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-					</svg>
-				</button>
-				<button
-					on:click={handleAnalyze}
-					disabled={$isAnalyzing}
-					class="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
-				>
-					{$isAnalyzing ? 'Analyzing...' : 'Analyze'}
-				</button>
+			<div class="mb-6">
+				<!-- Folder Path Input with Language Selector -->
+				<div class="relative">
+					<label for="folder" class="block text-sm font-semibold text-gray-700 mb-3">
+						Project Folder Path
+					</label>
+					<div class="flex gap-3">
+						<input
+							id="folder"
+							type="text"
+							bind:value={folderPath}
+							placeholder="/path/to/your/project"
+							class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+							on:keydown={(e) => e.key === 'Enter' && handleAnalyze()}
+						/>
+						<select
+							bind:value={$selectedLanguage}
+							class="px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-base bg-white"
+							title="Documentation Language"
+						>
+							{#each languages as lang}
+								<option value={lang.code}>{lang.name}</option>
+							{/each}
+						</select>
+						<button
+							on:click={handleFilePicker}
+							class="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300"
+							title="Browse for folder"
+						>
+							<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+							</svg>
+						</button>
+					</div>
+				</div>
 			</div>
+
+			<button
+				on:click={handleAnalyze}
+				disabled={$isAnalyzing}
+				class="w-full px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+			>
+				{$isAnalyzing ? 'Analyzing...' : 'Analyze'}
+			</button>
 			
 			{#if error}
 				<div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

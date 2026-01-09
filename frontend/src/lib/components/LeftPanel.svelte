@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { identifiedSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache, failedSections, corruptedDiagrams } from '$lib/stores';
+	import { identifiedSections, currentProject, openDiagramTab, openTabs, generatedDiagrams, activeTabIndex, diagramCache, failedSections, corruptedDiagrams, selectedLanguage } from '$lib/stores';
 	import { generateSectionDiagram, fixCorruptedDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
 	import TreeNode from './TreeNode.svelte';
@@ -7,6 +7,18 @@
 	import { retryWithBackoff } from '$lib/retry';
 
 	let showQueryDialog = false;
+
+	const languages = [
+		{ code: 'en', name: '🇬🇧 EN' },
+		{ code: 'zh', name: '🇨🇳 ZH' },
+		{ code: 'es', name: '🇪🇸 ES' },
+		{ code: 'ja', name: '🇯🇵 JA' },
+		{ code: 'kr', name: '🇰🇷 KR' },
+		{ code: 'vi', name: '🇻🇳 VI' },
+		{ code: 'pt', name: '🇵🇹 PT' },
+		{ code: 'fr', name: '🇫🇷 FR' },
+		{ code: 'ru', name: '🇷🇺 RU' }
+	];
 
 	function handleOpenQueryDialog() {
 		showQueryDialog = true;
@@ -51,7 +63,7 @@
 		}
 
 		try {
-			const diagram = await generateSectionDiagram($currentProject, section);
+			const diagram = await generateSectionDiagram($currentProject, section, undefined, $selectedLanguage);
 			
 			// Cache is updated by openDiagramTab
 			openDiagramTab(diagram);
@@ -94,7 +106,8 @@
 				$currentProject,
 				section,
 				cachedDiagram.diagram.mermaid_code,
-				errorMessage
+				errorMessage,
+				$selectedLanguage
 			);
 			
 			if (fixedDiagram.status === 'success') {
@@ -154,7 +167,7 @@
 		
 		try {
 			// Import shared retry logic
-			const diagram = await retryWithBackoff(() => generateSectionDiagram($currentProject, section), section.section_id);
+			const diagram = await retryWithBackoff(() => generateSectionDiagram($currentProject, section, undefined, $selectedLanguage), section.section_id);
 			
 			// Success - update stores
 			diagramCache.update(cache => {
@@ -454,6 +467,22 @@
 			</div>
 			{/if}
 		{/if}
+	</div>
+	
+	<!-- Language Selector at Bottom -->
+	<div class="p-3 border-t border-gray-200 bg-white">
+		<div class="flex items-center gap-2">
+			<label for="lang" class="text-xs text-gray-600 font-medium">Lang:</label>
+			<select
+				id="lang"
+				bind:value={$selectedLanguage}
+				class="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+			>
+				{#each languages as lang}
+					<option value={lang.code}>{lang.name}</option>
+				{/each}
+			</select>
+		</div>
 	</div>
 </div>
 

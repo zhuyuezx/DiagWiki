@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, identifiedSections, diagramCache, openTabs, generatedDiagrams } from '$lib/stores';
+	import { currentProject, identifiedSections, diagramCache, openTabs, generatedDiagrams, selectedLanguage, updateProjectDiagramCount } from '$lib/stores';
 	import { queryWikiProblemStream, generateSectionDiagram } from '$lib/api';
 
 	let query = '';
@@ -10,6 +10,7 @@
 	let isExecuting = false;
 	let streamingText = '';
 	let cancelStream: (() => void) | null = null;
+	let isComposing = false; // Track IME composition state
 
 	function handleSubmit() {
 		if (!query.trim() || !$currentProject || isQuerying) return;
@@ -39,7 +40,8 @@
 				error = errorMsg;
 				isQuerying = false;
 				cancelStream = null;
-			}
+			},
+			$selectedLanguage
 		);
 	}
 
@@ -63,7 +65,8 @@
 							root_path: $currentProject,
 							next_step_prompt: mod.next_step_prompt,
 							wiki_name: mod.wiki_name,
-							is_new: false
+							is_new: false,
+							language: $selectedLanguage
 						})
 					});
 					if (!response.ok) {
@@ -116,6 +119,9 @@
 							newSet.add(diagram.section_id);
 							return newSet;
 						});
+						
+						// Update project history diagram count
+						if ($currentProject) updateProjectDiagramCount($currentProject);
 					}
 				} catch (err) {
 					console.error(`Error modifying ${mod.wiki_name}:`, err);
@@ -132,7 +138,8 @@
 							root_path: $currentProject,
 							next_step_prompt: creation.next_step_prompt,
 							wiki_name: creation.wiki_name,
-							is_new: true
+							is_new: true,
+							language: $selectedLanguage
 						})
 					});
 					
@@ -169,6 +176,9 @@
 							newSet.add(diagram.section_id);
 							return newSet;
 						});
+						
+						// Update project history diagram count
+						if ($currentProject) updateProjectDiagramCount($currentProject);
 					}
 				} catch (err) {
 					console.error(`Error creating ${creation.wiki_name}:`, err);
@@ -189,7 +199,7 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter' && !event.shiftKey) {
+		if (event.key === 'Enter' && !event.shiftKey && !isComposing) {
 			event.preventDefault();
 			handleSubmit();
 		}
@@ -250,6 +260,8 @@
 			type="text"
 			bind:value={query}
 			on:keydown={handleKeydown}
+			on:compositionstart={() => isComposing = true}
+			on:compositionend={() => isComposing = false}
 			placeholder="Ask a question or request modifications..."
 			class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
 			disabled={!$currentProject || isQuerying}

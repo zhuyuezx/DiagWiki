@@ -790,13 +790,35 @@ def build_single_diagram_prompt(
         
         "class": """
 - MUST start with: classDiagram
-- Show main classes and their relationships
-- Include key methods and properties
-- Use inheritance (--|>) and composition (--o) correctly
-- Keep class definitions focused on important members
-- Show interfaces and abstract classes clearly
-- If you want to add notes, they must be single-line using: note for MyClass \"This is a note for a class\"
-- DON'T use multi-line notes as they break Mermaid syntax!""",
+- Define each class ONLY ONCE: class ClassName { +method() -attribute }
+- CRITICAL: Can ONLY use defined classes in relationships/notes
+  * If class X uses class Y, BOTH X and Y MUST be defined with 'class' keyword first
+  * WRONG: class A {...} then A --> "SomeType" (SomeType never defined!)
+  * RIGHT: class A {...} class B {...} then A --> B
+- Generic types: Use ~~ syntax, NOT <>
+  * WRONG: function<bool(T, T)> or vector<int>
+  * RIGHT: function~bool, T, T~ or vector~int~
+  * Or create actual class: class function_bool_T_T {...}
+- Complex types that need relationships: Define them as classes
+  * If you need A --> FunctionType, define class FunctionType first
+  * Example: class function_bool_T_T { +bool operator_call(T a, T b) }
+- NEVER define same class multiple times or mix syntax styles
+- NO circular inheritance: Don't make A <|-- B AND B <|-- A
+- Relationships: <|-- (inherit), *-- (compose), o-- (aggregate), --> (associate)
+- Notes at end: note for ClassName "description"
+- Example:
+  classDiagram
+    class Tree {
+      -Node root
+      +insert(val)
+    }
+    class Node {
+      -int val
+      -Node left
+    }
+    Tree o-- Node
+    note for Tree "Container class"
+""",
         
         "stateDiagram": """
 - MUST start with: stateDiagram-v2
@@ -981,8 +1003,14 @@ def build_diagram_correction_prompt(
 - CRITICAL: "return" is NOT valid syntax in Mermaid! Instead use Actor-->>Target: message or Note
 - If ending early, just use deactivate Actor (NO bare "return" statement!)""",
         "class": """- MUST start with: classDiagram
-- Define classes: class ClassName { +method() }
-- Show relationships: Parent <|-- Child""",
+- Define each class ONLY ONCE with members inside: class ClassName { -attribute +method() }
+- CRITICAL: Can ONLY reference classes that are defined - no undefined types in relationships/notes
+- Generic types: Use ~~ not <>. Example: vector~int~ not vector<int>
+- Complex types needing relationships: Define as classes (e.g., class function_bool_T {...})
+- NEVER duplicate class definitions or mix definition styles
+- Relationships: Parent <|-- Child (inheritance), Whole o-- Part (aggregation)
+- Put notes AFTER all class definitions: note for ClassName "description"
+- NO circular inheritance (A <|-- B AND B <|-- A)""",
         "stateDiagram": """- MUST start with: stateDiagram-v2
 - Define states: state "Name" as id
 - Show transitions: id1 --> id2: event""",
@@ -1087,9 +1115,25 @@ def build_diagram_correction_prompt(
     ]
     
     common_errors_class = [
-        "**Invalid relationship syntax** → Use <|-- for inheritance, *-- for composition",
-        "**Missing class definition** → Define class before using: class ClassName",
-        "**Invalid method syntax** → Use +publicMethod() or -privateMethod()"
+        """**Using undefined class in relationship/note** → "Cannot read properties of undefined (reading 'startsWith')"
+   - CRITICAL: All classes in relationships and notes MUST be defined first
+   - WRONG: class A {...} then A --> "SomeType" (SomeType not defined!)
+   - WRONG: note for "function<bool>" "..." (function<bool> not defined!)
+   - RIGHT: Define ALL classes first, then add relationships/notes
+   - For complex types: Create a class like class function_bool_T_T {...}""",
+        """**Using <> for generics** → Breaks Mermaid parsing
+   - WRONG: function<bool(T)> or vector<int>
+   - RIGHT: Use ~~ syntax: function~bool, T~ or vector~int~""",
+        """**Duplicate class definitions** → Parse error "got 'DEPENDENCY'"
+   - Define each class ONLY ONCE
+   - WRONG: class A {...} then class A {...} again
+   - RIGHT: class A { all members here }""",
+        """**Mixed syntax styles** → Causes parsing errors
+   - Pick ONE: Either class A { members } OR class A followed by A : member lines
+   - NEVER mix both styles for same class""",
+        """**Circular inheritance** → A <|-- B AND B <|-- A breaks rendering
+   - Remove bidirectional inheritance""",
+        "**Invalid relationship syntax** → Use <|-- (inherit), *-- (compose), o-- (aggregate)"
     ]
     
     common_errors_state = [
@@ -1331,7 +1375,8 @@ def build_wiki_problem_analysis_prompt(
     user_prompt: str,
     wiki_context: str,
     codebase_context: str,
-    wiki_items: Optional[Dict[str, str]] = None
+    wiki_items: Optional[Dict[str, str]] = None,
+    language: str = "en"
 ) -> str:
     """
     Build prompt for analyzing whether a user's request is a question or modification request.
@@ -1341,6 +1386,7 @@ def build_wiki_problem_analysis_prompt(
         wiki_context: Existing wiki content from RAG
         codebase_context: Relevant codebase snippets
         wiki_items: Optional dict of {wiki_name: question} pairs
+        language: Target language code for response
     
     Returns:
         Prompt string for LLM to analyze the request
@@ -1363,6 +1409,10 @@ CODEBASE CONTEXT:
 
 USER REQUEST:
 {user_prompt}
+
+IMPORTANT LANGUAGE REQUIREMENT:
+If intent is "question", generate the "answer" field in {get_language_name(language)} language.
+If intent is "modification", keep field names (intent, reasoning, modify, create, wiki_name, reason, next_step_prompt) in English, but write the text VALUES (reasoning, reason, next_step_prompt) in {get_language_name(language)} language.
 
 CRITICAL DECISION RULES:
 1. If user asks "how", "what", "why", "explain", "tell me" → QUESTION (provide direct answer)
@@ -1433,7 +1483,8 @@ def build_wiki_creation_prompt(
     wiki_name: str,
     creation_prompt: str,
     codebase_context: str,
-    diagram_type: str = None
+    diagram_type: str = None,
+    language: str = "en"
 ) -> str:
     """
     Build prompt for creating a new wiki section.
@@ -1443,10 +1494,12 @@ def build_wiki_creation_prompt(
         creation_prompt: Detailed requirements from problem analysis
         codebase_context: Relevant code snippets
         diagram_type: Optional diagram type ('auto' or specific type)
+        language: Target language code
     
     Returns:
         Prompt string for creating new wiki content
     """
+    language_name = get_language_name(language)
     # Determine diagram type instruction
     if diagram_type and diagram_type != 'auto':
         diagram_type_instruction = f'You MUST use diagram type: {diagram_type}'
@@ -1499,6 +1552,8 @@ Guidelines:
   * NO random rainbow colors (avoid #f0f8ff, #ffe4b5, #98fb98, #ff6347, #87ceeb, #9370db, etc.)
   * Leave most nodes unstyled for a clean, professional appearance
 
+IMPORTANT: Generate the content in {language_name} language.
+
 Respond with valid JSON only:"""
     
     return prompt
@@ -1508,7 +1563,8 @@ def build_wiki_modification_prompt(
     wiki_name: str,
     existing_content: Dict,
     modification_prompt: str,
-    codebase_context: str
+    codebase_context: str,
+    language: str = "en"
 ) -> str:
     """
     Build prompt for modifying existing wiki content.
@@ -1518,10 +1574,12 @@ def build_wiki_modification_prompt(
         existing_content: Current wiki section content
         modification_prompt: What to change
         codebase_context: Updated code snippets
+        language: Target language code
     
     Returns:
         Prompt string for modifying wiki content
     """
+    language_name = get_language_name(language)
     # Extract existing diagram info
     existing_diagram = existing_content.get('diagram', {})
     existing_mermaid = existing_diagram.get('mermaid_code', '')
@@ -1576,6 +1634,8 @@ CRITICAL RULES:
 4. Ensure all new edges have explanations
 5. Keep valid Mermaid syntax (proper node IDs, edge formats)
 6. Use same node naming style as existing diagram
+
+IMPORTANT: Generate the content in {language_name} language.
 
 Respond with valid JSON only:"""
     

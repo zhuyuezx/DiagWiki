@@ -76,6 +76,11 @@ class Config:
     TEXT_CHUNK_OVERLAP: int = int(os.environ.get("TEXT_CHUNK_OVERLAP", "50"))
     
     # ============================================================
+    # Localization
+    # ============================================================
+    DEFAULT_LANGUAGE: str = os.environ.get("DEFAULT_LANGUAGE", "en")
+    
+    # ============================================================
     # RAG Configuration
     # ============================================================
     # Maximum characters for RAG context to prevent LLM overflow

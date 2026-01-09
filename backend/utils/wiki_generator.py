@@ -574,7 +574,8 @@ class WikiGenerator:
         self,
         user_prompt: str,
         wiki_items: Optional[Dict[str, str]] = None,
-        websocket = None
+        websocket = None,
+        language: str = "en"
     ):
         """
         Stream the wiki problem analysis in real-time.
@@ -583,6 +584,7 @@ class WikiGenerator:
             user_prompt: User's request
             wiki_items: Optional dict of {wiki_name: question} pairs
             websocket: WebSocket connection for streaming
+            language: Target language code for response
         
         Yields:
             Text chunks from LLM response
@@ -634,7 +636,8 @@ class WikiGenerator:
             user_prompt=user_prompt,
             wiki_context=wiki_context,
             codebase_context=codebase_context,
-            wiki_items=wiki_items
+            wiki_items=wiki_items,
+            language=language
         )
         
         # Stream from Ollama
@@ -661,7 +664,8 @@ class WikiGenerator:
     def analyze_wiki_problem(
         self,
         user_prompt: str,
-        wiki_items: Optional[Dict[str, str]] = None
+        wiki_items: Optional[Dict[str, str]] = None,
+        language: str = "en"
     ) -> Dict:
         """
         Analyze a user's wiki-related request and determine if modifications are needed.
@@ -669,6 +673,7 @@ class WikiGenerator:
         Args:
             user_prompt: User's request describing the problem or question
             wiki_items: Optional dict of {wiki_name: question} pairs
+            language: Target language code for response
         
         Returns:
             Dict with either answer (for questions) or modification plan
@@ -721,7 +726,8 @@ class WikiGenerator:
             user_prompt=user_prompt,
             wiki_context=wiki_context,
             codebase_context=codebase_context,
-            wiki_items=wiki_items
+            wiki_items=wiki_items,
+            language=language
         )
         
         # Call LLM with timeout configuration
@@ -851,7 +857,8 @@ class WikiGenerator:
         wiki_name: str,
         prompt: str,
         diagram_type: str = None,
-        reference_files: List[str] = None
+        reference_files: List[str] = None,
+        language: str = "en"
     ) -> Dict:
         """
         Create a new wiki section based on a detailed prompt.
@@ -861,6 +868,7 @@ class WikiGenerator:
             prompt: Detailed creation prompt from problem analysis
             diagram_type: Diagram type ('auto' or specific type like 'flowchart', 'sequence', etc.)
             reference_files: Optional list of file paths for manual reference mode
+            language: Language code for content generation
         
         Returns:
             Dict with the created wiki section
@@ -905,7 +913,8 @@ class WikiGenerator:
             wiki_name=wiki_name,
             creation_prompt=prompt,
             codebase_context=codebase_context,
-            diagram_type=diagram_type
+            diagram_type=diagram_type,
+            language=language
         )
         
         # Call LLM with timeout configuration
@@ -954,7 +963,7 @@ class WikiGenerator:
                     "section_id": wiki_name,
                     "section_title": diagram_data.get('section_title', ''),
                     "section_description": diagram_data.get('section_description', ''),
-                    "language": "en",
+                    "language": language,
                     "diagram": {
                         "mermaid_code": mermaid_code,
                         "description": diagram_data.get('diagram_description', ''),
@@ -1032,7 +1041,8 @@ class WikiGenerator:
         self,
         wiki_name: str,
         modification_prompt: str,
-        reference_files: List[str] = None
+        reference_files: List[str] = None,
+        language: str = "en"
     ) -> Dict:
         """
         Modify an existing wiki section.
@@ -1041,6 +1051,7 @@ class WikiGenerator:
             wiki_name: ID/name of the section to modify
             modification_prompt: What to change
             reference_files: Optional list of file paths for manual reference mode
+            language: Language code for content generation
         
         Returns:
             Dict with the modified wiki section
@@ -1101,7 +1112,8 @@ class WikiGenerator:
             wiki_name=wiki_name,
             existing_content=existing_content,
             modification_prompt=modification_prompt,
-            codebase_context=codebase_context
+            codebase_context=codebase_context,
+            language=language
         )
         
         # Call LLM with timeout configuration
@@ -1149,7 +1161,7 @@ class WikiGenerator:
                     "section_id": wiki_name,
                     "section_title": diagram_data.get('section_title', ''),
                     "section_description": diagram_data.get('section_description', ''),
-                    "language": existing_content.get('language', 'en'),
+                    "language": language,
                     "diagram": {
                         "mermaid_code": mermaid_code,
                         "description": diagram_data.get('diagram_description', ''),

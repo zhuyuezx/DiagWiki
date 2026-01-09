@@ -360,7 +360,7 @@ async def query_wiki(
 class WikiStructureRequest(BaseModel):
     root_path: str = Field(..., description="Root path to the folder")
     comprehensive: bool = Field(False, description="Whether to create comprehensive wiki (8-12 pages) or concise (4-6 pages)")
-    language: str = Field("en", description="Language code (en, ja, zh, es, kr, vi, etc.)")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code (en, ja, zh, es, kr, vi, etc.)")
 
 
 class WikiPageRequest(BaseModel):
@@ -368,7 +368,7 @@ class WikiPageRequest(BaseModel):
     page_title: str = Field(..., description="Title of the page to generate")
     page_description: str = Field(..., description="Description of what the page should cover")
     relevant_files: List[str] = Field(..., description="List of relevant file paths for this page")
-    language: str = Field("en", description="Language code")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
     page_id: Optional[str] = Field(None, description="Optional page ID for caching (defaults to sanitized page_title)")
 
 
@@ -470,7 +470,7 @@ async def generate_wiki_page(request: WikiPageRequest = Body(...)):
 # Pydantic models for two-step diagram API
 class DiagramSectionsRequest(BaseModel):
     root_path: str = Field(..., description="Root path to the folder")
-    language: str = Field("en", description="Language code")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
 
 
 class SectionDiagramRequest(BaseModel):
@@ -481,7 +481,7 @@ class SectionDiagramRequest(BaseModel):
     diagram_type: str = Field(..., description="Type of Mermaid diagram (flowchart, sequence, class, etc.)")
     key_concepts: Optional[List[str]] = Field(None, description="List of key concepts to include in the diagram (legacy format)")
     file_references: Optional[str] = Field(None, description="Detailed file analysis string (new format from iteration 3)")
-    language: str = Field("en", description="Language code")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
     reference_files: Optional[List[str]] = Field(None, description="Optional list of specific file paths to use as reference instead of RAG")
 
 
@@ -493,7 +493,7 @@ class FixDiagramRequest(BaseModel):
     diagram_type: str = Field(..., description="Type of Mermaid diagram")
     key_concepts: Optional[List[str]] = Field(None, description="List of key concepts (legacy format)")
     file_references: Optional[str] = Field(None, description="Detailed file analysis string (new format from iteration 3)")
-    language: str = Field("en", description="Language code")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
     corrupted_diagram: str = Field(..., description="The corrupted Mermaid diagram code")
     error_message: str = Field(..., description="The Mermaid rendering error message")
 
@@ -828,6 +828,7 @@ class WikiProblemRequest(BaseModel):
     root_path: str = Field(..., description="Root path to the folder")
     prompt: str = Field(..., description="User's request describing the problem or modification needed")
     wiki_items: Optional[List[WikiItem]] = Field(None, description="Optional list of wiki sections with questions")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
 
 
 class ModifyOrCreateWikiRequest(BaseModel):
@@ -837,6 +838,7 @@ class ModifyOrCreateWikiRequest(BaseModel):
     is_new: bool = Field(..., description="Whether this is a new wiki section or modification of existing")
     diagram_type: Optional[str] = Field(None, description="Diagram type: 'auto' to let LLM determine, or specific type (flowchart, sequence, class, stateDiagram, erDiagram)")
     reference_files: Optional[List[str]] = Field(None, description="Optional list of file paths for manual reference mode")
+    language: str = Field(default_factory=lambda: Config.DEFAULT_LANGUAGE, description="Language code")
 
 
 @app.websocket("/ws/wikiProblem")
@@ -853,6 +855,7 @@ async def websocket_wiki_problem(websocket: WebSocket):
         root_path = data.get("root_path")
         prompt = data.get("prompt")
         wiki_items = data.get("wiki_items")
+        language = data.get("language", Config.DEFAULT_LANGUAGE)
         
         logger.info(f"WebSocket wiki problem for: {root_path}")
         logger.info(f"Prompt: {prompt[:100]}...")
@@ -874,7 +877,8 @@ async def websocket_wiki_problem(websocket: WebSocket):
         async for chunk in wiki_gen.analyze_wiki_problem_stream(
             user_prompt=prompt,
             wiki_items=wiki_items,
-            websocket=websocket
+            websocket=websocket,
+            language=language
         ):
             await websocket.send_json({
                 "type": "chunk",
@@ -939,7 +943,8 @@ async def wiki_problem(request: WikiProblemRequest = Body(...)):
         
         result = wiki_gen.analyze_wiki_problem(
             user_prompt=request.prompt,
-            wiki_items=wiki_items_dict
+            wiki_items=wiki_items_dict,
+            language=request.language
         )
         
         return result
@@ -983,14 +988,16 @@ async def modify_or_create_wiki(request: ModifyOrCreateWikiRequest = Body(...)):
                 wiki_name=request.wiki_name,
                 prompt=request.next_step_prompt,
                 diagram_type=request.diagram_type,
-                reference_files=request.reference_files
+                reference_files=request.reference_files,
+                language=request.language
             )
         else:
             # Modify existing wiki section
             result = wiki_gen.modify_wiki_section(
                 wiki_name=request.wiki_name,
                 modification_prompt=request.next_step_prompt,
-                reference_files=request.reference_files
+                reference_files=request.reference_files,
+                language=request.language
             )
         
         return result

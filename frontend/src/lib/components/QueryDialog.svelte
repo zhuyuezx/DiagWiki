@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { currentProject, identifiedSections, generatedDiagrams, diagramCache } from '$lib/stores';
+	import { currentProject, identifiedSections, generatedDiagrams, diagramCache, selectedLanguage, updateProjectDiagramCount } from '$lib/stores';
 	import { generateSectionDiagram } from '$lib/api';
 	import type { WikiSection } from '$lib/types';
 	import FileTreeNode from './FileTreeNode.svelte';
@@ -180,10 +180,9 @@
 			} else {
 				// For existing sections, use regular generation
 				const referenceFiles = referenceMode === 'manual' ? selectedFiles : undefined;
-				diagram = await generateSectionDiagram(projectPath, sectionToGenerate, referenceFiles);
+				diagram = await generateSectionDiagram(projectPath, sectionToGenerate, referenceFiles, $selectedLanguage);
 			}
-			
-			// Add to frontend cache
+
 			diagramCache.update(cache => {
 				const newCache = new Map(cache);
 				newCache.set(sectionToGenerate.section_id, diagram);
@@ -216,6 +215,11 @@
 				newSet.add(sectionToGenerate.section_id);
 				return newSet;
 			});
+			
+			// Update project history diagram count if new section was added
+			if (isNewCustomSection && $currentProject) {
+				updateProjectDiagramCount($currentProject);
+			}
 			
 			// Open the diagram
 			window.dispatchEvent(new CustomEvent('openDiagram', { detail: diagram }));

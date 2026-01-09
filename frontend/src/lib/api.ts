@@ -16,7 +16,7 @@ export async function initWiki(rootPath: string) {
 	return await response.json();
 }
 
-export async function identifyDiagramSections(rootPath: string) {
+export async function identifyDiagramSections(rootPath: string, language: string = 'en') {
 	// First ensure the database is initialized
 	try {
 		await initWiki(rootPath);
@@ -30,7 +30,7 @@ export async function identifyDiagramSections(rootPath: string) {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			root_path: rootPath,
-			language: 'en'
+			language: language
 		})
 	});
 
@@ -41,7 +41,7 @@ export async function identifyDiagramSections(rootPath: string) {
 	return await response.json();
 }
 
-export async function generateSectionDiagram(rootPath: string, section: any, referenceFiles?: string[]) {
+export async function generateSectionDiagram(rootPath: string, section: any, referenceFiles?: string[], language?: string) {
 	const response = await fetch(`${API_BASE}/generateSectionDiagram`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -52,7 +52,7 @@ export async function generateSectionDiagram(rootPath: string, section: any, ref
 			section_description: section.section_description,
 			diagram_type: section.diagram_type,
 			key_concepts: section.key_concepts,
-			language: 'en',
+			language: language || 'en',
 			reference_files: referenceFiles
 		})
 	});
@@ -68,7 +68,8 @@ export async function fixCorruptedDiagram(
 	rootPath: string,
 	section: any,
 	corruptedDiagram: string,
-	errorMessage: string
+	errorMessage: string,
+	language?: string
 ) {
 	const response = await fetch(`${API_BASE}/fixCorruptedDiagram`, {
 		method: 'POST',
@@ -80,7 +81,7 @@ export async function fixCorruptedDiagram(
 			section_description: section.section_description,
 			diagram_type: section.diagram_type,
 			key_concepts: section.key_concepts || [],
-			language: 'en',
+			language: language || 'en',
 			corrupted_diagram: corruptedDiagram,
 			error_message: errorMessage
 		})
@@ -113,13 +114,14 @@ export async function updateDiagram(rootPath: string, sectionId: string, mermaid
 	return await response.json();
 }
 
-export async function queryWikiProblem(rootPath: string, prompt: string) {
+export async function queryWikiProblem(rootPath: string, prompt: string, language?: string) {
 	const response = await fetch(`${API_BASE}/wikiProblem`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			root_path: rootPath,
-			prompt: prompt
+			prompt: prompt,
+			language: language || 'en'
 		})
 	});
 
@@ -135,7 +137,8 @@ export function queryWikiProblemStream(
 	prompt: string,
 	onChunk: (chunk: string) => void,
 	onComplete: (fullResponse: any) => void,
-	onError: (error: string) => void
+	onError: (error: string) => void,
+	language?: string
 ): () => void {
 	const wsUrl = API_BASE.replace('http', 'ws') + '/ws/wikiProblem';
 	const ws = new WebSocket(wsUrl);
@@ -146,7 +149,8 @@ export function queryWikiProblemStream(
 		ws.send(JSON.stringify({
 			root_path: rootPath,
 			prompt: prompt,
-			wiki_items: null
+			wiki_items: null,
+			language: language || 'en'
 		}));
 	};
 	

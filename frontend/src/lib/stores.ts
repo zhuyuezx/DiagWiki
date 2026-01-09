@@ -25,6 +25,9 @@ projectHistory.subscribe((value) => {
 // Available diagram sections from analysis - keyed by project path
 export const identifiedSections = writable<Map<string, WikiSection[]>>(new Map());
 
+// Selected language (global state, not per-project)
+export const selectedLanguage = writable<string>('en');
+
 export const generateRequestSent = writable<Map<string, Set<string>>>(new Map());
 export const availableSections = writable<Map<string, Set<WikiSection>>>(new Map());
 
@@ -91,6 +94,20 @@ export const activeDiagram = derived(
 );
 
 // Helper functions
+export function updateProjectDiagramCount(path: string) {
+	projectHistory.update((history) => {
+		const existing = history.find((h) => h.path === path);
+		if (existing) {
+			// Get current diagram count from identifiedSections
+			const sections = get(identifiedSections).get(path);
+			const diagramCount = sections ? sections.length : 0;
+			existing.diagrams = Array(diagramCount).fill('');
+			return [...history];
+		}
+		return history;
+	});
+}
+
 export function addToHistory(path: string) {
 	projectHistory.update((history) => {
 		const existing = history.find((h) => h.path === path);
