@@ -854,7 +854,6 @@ async def websocket_wiki_problem(websocket: WebSocket):
         data = await websocket.receive_json()
         root_path = data.get("root_path")
         prompt = data.get("prompt")
-        wiki_items = data.get("wiki_items")
         language = data.get("language", Config.DEFAULT_LANGUAGE)
         
         logger.info(f"WebSocket wiki problem for: {root_path}")
@@ -876,8 +875,6 @@ async def websocket_wiki_problem(websocket: WebSocket):
         # Stream the analysis
         async for chunk in wiki_gen.analyze_wiki_problem_stream(
             user_prompt=prompt,
-            wiki_items=wiki_items,
-            websocket=websocket,
             language=language
         ):
             await websocket.send_json({
@@ -933,17 +930,8 @@ async def wiki_problem(request: WikiProblemRequest = Body(...)):
         data_dir = os.path.join(os.path.dirname(__file__), "data")
         wiki_gen = WikiGenerator(root_path=request.root_path, data_dir=data_dir)
         
-        # Convert wiki_items to dict format
-        wiki_items_dict = None
-        if request.wiki_items:
-            wiki_items_dict = {
-                item.wiki_name: item.question 
-                for item in request.wiki_items
-            }
-        
         result = wiki_gen.analyze_wiki_problem(
             user_prompt=request.prompt,
-            wiki_items=wiki_items_dict,
             language=request.language
         )
         

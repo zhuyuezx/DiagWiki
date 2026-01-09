@@ -149,7 +149,6 @@ export function queryWikiProblemStream(
 		ws.send(JSON.stringify({
 			root_path: rootPath,
 			prompt: prompt,
-			wiki_items: null,
 			language: language || 'en'
 		}));
 	};

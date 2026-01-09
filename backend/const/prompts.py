@@ -757,9 +757,38 @@ def build_single_diagram_prompt(
 - Keep node labels concise (3-5 words max)
 - Every node must represent a real component/concept from the codebase, no vague concepts or placeholders
 - Can use subgraphs to group related nodes if this adds clarity
-- Critical! Wrap labels with special chars in quotes!
-  * No A[Recall@10] (run into syntax errors), use A["Recall@10"] instead
-  * Alternative: Replace special chars with words: A[Recall at 10] (also correct)
+
+⚠️ CRITICAL MERMAID SYNTAX RULES - PARSER WILL FAIL WITHOUT THESE:
+
+🚫 PARENTHESES () ARE FORBIDDEN IN UNQUOTED LABELS:
+   ❌ WRONG: Node[Add Token()]      ← PARSER ERROR - "got 'PS'"
+   ❌ WRONG: Node[Function()]        ← PARSER ERROR - () is node shape syntax
+   ❌ WRONG: Node[Process (async)]   ← PARSER ERROR - () breaks parsing
+   ✅ RIGHT: Node["Add Token()"]     ← ALWAYS quote when using ()
+   ✅ RIGHT: Node["Function()"]      ← Quotes make () literal text
+   ✅ RIGHT: Node["Process (async)"] ← Quotes prevent shape interpretation
+
+🚫 BRACKETS [] FORBIDDEN IN UNQUOTED LABELS:
+   ❌ WRONG: Node[Page /app/[id]/page.tsx]  ← PARSER ERROR
+   ❌ WRONG: Node[Route [owner]/[repo]]     ← PARSER ERROR
+   ✅ RIGHT: Node["Page /app/[id]/page.tsx"] ← Quote the entire label
+   ✅ RIGHT: Node["Route [owner]/[repo]"]    ← Brackets safe in quotes
+
+📋 ALL SPECIAL CHARACTERS REQUIRE QUOTES:
+   * Special chars: ( ) [ ] / - @ : . + * ? ! # $ % & = , ; ' " ` ~
+   * Examples that MUST use quotes:
+     - Node["src/app/page.tsx"]      ← paths with /
+     - Node["User-Service-API"]      ← hyphens/dashes
+     - Node["Config: production"]    ← colons
+     - Node["Precision@10"]          ← @ symbols
+     - Node["get_user_data()"]       ← underscores OK, but () needs quotes
+   
+✅ SAFE WITHOUT QUOTES (simple text only):
+   - Node[Simple Text]     ← spaces OK
+   - Node[User Service]    ← spaces OK
+   - Node[Process Data]    ← spaces OK
+   
+💎 GOLDEN RULE: If label has ANY special char, USE QUOTES: Node["Your Label"]
 - STYLING RULES (Premium Professional Style):
   * Use MINIMAL and SELECTIVE coloring - most nodes should use default styling
   * Apply colors ONLY to emphasize critical nodes (entry points, error states, key decision points)
@@ -993,8 +1022,21 @@ def build_diagram_correction_prompt(
         "flowchart": """- MUST start with: flowchart TD (top-down) or flowchart LR (left-right)
 - Use rectangles for processes, diamonds for decisions, rounded for start/end
 - Keep node labels concise (3-5 words max)
-- Critical! Wrap labels with special chars in quotes: A["Recall@10"] not A[Recall@10]
-- Or replace special chars with words: A[Recall at 10]
+
+⚠️ CRITICAL: PARENTHESES () FORBIDDEN IN UNQUOTED LABELS:
+   ❌ WRONG: Node[Add Token()]      ← PARSER ERROR: "got 'PS'"
+   ❌ WRONG: Node[Process (async)]   ← PARSER ERROR: () is node shape
+   ✅ RIGHT: Node["Add Token()"]     ← Quote when using ()
+   ✅ RIGHT: Node["Process (async)"] ← Always quote ()
+
+⚠️ CRITICAL: BRACKETS [] FORBIDDEN IN UNQUOTED LABELS:
+   ❌ WRONG: Node[Route [owner]]     ← PARSER ERROR
+   ✅ RIGHT: Node["Route [owner]"]   ← Quote the label
+
+📋 ALL SPECIAL CHARS NEED QUOTES: ( ) [ ] / - @ : . + * etc.
+   Safe without quotes: Node[Simple Text] or Node[Process Data]
+   GOLDEN RULE: If ANY special char → USE QUOTES: Node["Your Label"]
+
 - STYLING: Use minimal coloring - only emphasize critical nodes""",
         "sequence": """- MUST start with: sequenceDiagram
 - Format: participant Name
@@ -1600,6 +1642,12 @@ STYLING GUIDELINES:
 ✗ Oversimplifying 50+ component systems into 5 nodes
 ✗ Missing conditional logic and branching paths
 ✗ Vague edge labels or unlabeled critical connections
+
+🚫 MERMAID PARSER ERRORS (WILL CRASH):
+✗ Parentheses unquoted: C[Add Token()] ← ERROR: "got 'PS'"
+✗ Brackets unquoted: C[Route [id]] ← ERROR: parser fails
+✗ File paths unquoted: Node[/app/page.tsx] ← ERROR: / breaks parsing
+✓ ALWAYS QUOTE SPECIAL CHARS: Node["Add Token()"] Node["Route [id]"] Node["/app/page.tsx"]
 
 ✓ SUCCESS INDICATORS:
 ✓ Diagram has appropriate complexity matching the actual system

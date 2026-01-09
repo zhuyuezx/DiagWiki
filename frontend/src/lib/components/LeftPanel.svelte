@@ -95,16 +95,91 @@
 		
 		if (!$currentProject) return;
 		
-		const errorMessage = $corruptedDiagrams.get(section.section_id);
-		if (!errorMessage) return;
+		console.log('Fix diagram - initial state:', {
+			section,
+			corruptedDiagramsCount: $corruptedDiagrams.size,
+			corruptedDiagramIds: Array.from($corruptedDiagrams.keys()),
+			diagramCacheCount: $diagramCache.size,
+			diagramCacheIds: Array.from($diagramCache.keys())
+		});
 		
-		const cachedDiagram = $diagramCache.get(section.section_id);
-		if (!cachedDiagram) return;
+		// The section might be corrupted (undefined fields), so we need to find it by matching
+		// against corrupted diagrams and cache entries
+		let sectionId = section?.section_id;
+		let cachedDiagram = null;
+		let errorMessage = null;
+		
+		// If section_id is undefined, try to find it by iterating corrupted diagrams
+		if (!sectionId) {
+			console.warn('Section has undefined section_id, searching corrupted diagrams...');
+			
+			// Get valid corrupted diagram entries (filter out undefined keys)
+			const validCorruptedEntries = Array.from($corruptedDiagrams.entries()).filter(([id]) => id !== undefined && id !== 'undefined' && id !== null);
+			
+			// If there's only one valid corrupted diagram, use that
+			if (validCorruptedEntries.length === 1) {
+				const [id, error] = validCorruptedEntries[0];
+				sectionId = id;
+				cachedDiagram = $diagramCache.get(id);
+				errorMessage = error;
+				console.log('Using the only valid corrupted diagram:', { sectionId, hasCache: !!cachedDiagram });
+			} else {
+				// Try to match by diagram_type
+				for (const [id, error] of validCorruptedEntries) {
+					const cached = $diagramCache.get(id);
+					console.log('Checking corrupted diagram:', { id, hasCached: !!cached, cachedType: cached?.diagram?.diagram_type, sectionType: section.diagram_type });
+					
+					if (cached && cached.diagram?.diagram_type === section.diagram_type) {
+						sectionId = id;
+						cachedDiagram = cached;
+						errorMessage = error;
+						console.log('Found matching corrupted diagram by type:', { sectionId });
+						break;
+					}
+				}
+			}
+		} else {
+			errorMessage = $corruptedDiagrams.get(sectionId);
+			cachedDiagram = $diagramCache.get(sectionId);
+		}
+		
+		if (!sectionId) {
+			console.error('Cannot determine section_id:', { 
+				section, 
+				corruptedDiagrams: Array.from($corruptedDiagrams.entries()),
+				diagramCache: Array.from($diagramCache.entries()).map(([k, v]) => ({ id: k, hasData: !!v }))
+			});
+			alert('Error: Cannot identify corrupted diagram - section_id not found.');
+			return;
+		}
+		
+		if (!cachedDiagram) {
+			console.error('No cached diagram found for section_id:', sectionId);
+			alert(`Error: No cached diagram data found for ${sectionId}.`);
+			return;
+		}
+		
+		if (!errorMessage) {
+			console.error('No error message found for section_id:', sectionId);
+			alert(`Error: No error message found for ${sectionId}.`);
+			return;
+		}
+		
+		// Build complete section data from cache (which has the correct data)
+		const sectionData = {
+			section_id: cachedDiagram.section_id || sectionId,
+			section_title: cachedDiagram.section_title || sectionId,
+			section_description: cachedDiagram.section_description || 'Diagram description',
+			diagram_type: cachedDiagram.diagram?.diagram_type || section.diagram_type || 'flowchart',
+			key_concepts: section.key_concepts || []
+		};
+		
+		console.log('Fixing diagram with reconstructed data:', sectionData);
 		
 		try {
 			const fixedDiagram = await fixCorruptedDiagram(
 				$currentProject,
-				section,
+				sectionData,
 				cachedDiagram.diagram.mermaid_code,
 				errorMessage,
 				$selectedLanguage

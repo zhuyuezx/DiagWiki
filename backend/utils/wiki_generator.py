@@ -186,6 +186,38 @@ class WikiGenerator:
             self.wiki_rag_query = WikiRAGQuery(self.cache.wiki_db_path, self.rag)
             self.diagram_generator = WikiDiagramGenerator(self.root_path, self.cache, self.rag)
     
+    def load_wiki_sections(self) -> Optional[Dict[str, str]]:
+        """
+        Load all wiki sections from the sections.json file.
+        
+        Returns:
+            Dict of {section_id: section_title} or None if no sections exist
+        """
+        sections_file = os.path.join(self.db_path, "wiki", "diagrams", f"{self.db_name}_sections.json")
+        
+        if not os.path.exists(sections_file):
+            logger.debug(f"No sections file found at {sections_file}")
+            return None
+        
+        try:
+            with open(sections_file, 'r', encoding='utf-8') as f:
+                sections_data = json.load(f)
+            
+            # Convert to {section_id: section_title} format
+            wiki_items = {}
+            for section in sections_data.get('sections', []):
+                section_id = section.get('section_id')
+                section_title = section.get('section_title')
+                if section_id and section_title:
+                    wiki_items[section_id] = section_title
+            
+            logger.info(f"Loaded {len(wiki_items)} wiki sections from {sections_file}")
+            return wiki_items if wiki_items else None
+            
+        except Exception as e:
+            logger.warning(f"Failed to load wiki sections: {e}")
+            return None
+    
     def query_wiki_rag(self, query: str, top_k: int = 20) -> Dict:
         """
         Query both wiki and codebase RAG for comprehensive answers.
@@ -573,8 +605,6 @@ class WikiGenerator:
     async def analyze_wiki_problem_stream(
         self,
         user_prompt: str,
-        wiki_items: Optional[Dict[str, str]] = None,
-        websocket = None,
         language: str = "en"
     ):
         """
@@ -582,7 +612,7 @@ class WikiGenerator:
         
         Args:
             user_prompt: User's request
-            wiki_items: Optional dict of {wiki_name: question} pairs
+            wiki_items: Optional dict of {wiki_name: question} pairs (auto-loaded if None)
             websocket: WebSocket connection for streaming
             language: Target language code for response
         
@@ -594,6 +624,14 @@ class WikiGenerator:
         
         # Ensure RAG is initialized
         self.initialize_rag()
+        
+        # Auto-load wiki_items from sections.json if not provided
+        wiki_items = self.load_wiki_sections()
+        if wiki_items:
+            logger.info(f"Auto-loaded {len(wiki_items)} wiki sections for context")
+        else:
+            logger.warning("No wiki sections found for context")
+            wiki_items = {}
         
         # Retrieve contexts (same as non-streaming)
         wiki_context = ""
@@ -664,7 +702,6 @@ class WikiGenerator:
     def analyze_wiki_problem(
         self,
         user_prompt: str,
-        wiki_items: Optional[Dict[str, str]] = None,
         language: str = "en"
     ) -> Dict:
         """
@@ -672,7 +709,6 @@ class WikiGenerator:
         
         Args:
             user_prompt: User's request describing the problem or question
-            wiki_items: Optional dict of {wiki_name: question} pairs
             language: Target language code for response
         
         Returns:
@@ -683,6 +719,12 @@ class WikiGenerator:
         
         # Ensure RAG is initialized
         self.initialize_rag()
+        
+        # Auto-load wiki_items from sections.json if not provided
+        if wiki_items is None:
+            wiki_items = self.load_wiki_sections()
+            if wiki_items:
+                logger.info(f"Auto-loaded {len(wiki_items)} wiki sections for context")
         
         # Retrieve existing wiki content from wiki database
         wiki_context = ""
@@ -814,8 +856,8 @@ class WikiGenerator:
             # Create new section metadata
             new_section = {
                 "section_id": result['section_id'],
-                "section_title": result['section_title'],
-                "section_description": result.get('section_description', result['section_title']),
+                "section_title": result.get('section_title', result['section_id']),
+                "section_description": result.get('section_description', result.get('section_title', result['section_id'])),
                 "diagram_type": result['diagram'].get('diagram_type', 'flowchart'),
                 "key_concepts": []
             }
@@ -824,7 +866,9 @@ class WikiGenerator:
             if os.path.exists(sections_file):
                 with open(sections_file, 'r', encoding='utf-8') as f:
                     sections_data = json.load(f)
+                logger.info(f"   Loaded {len(sections_data.get('sections', []))} existing sections")
             else:
+                logger.info(f"   Creating new sections file: {sections_file}")
                 sections_data = {
                     "status": "success",
                     "repo_name": repo_name,
@@ -835,7 +879,7 @@ class WikiGenerator:
             
             # Check if this custom section already exists
             sections = sections_data.get('sections', [])
-            existing_ids = [s['section_id'] for s in sections]
+            existing_ids = [s.get('section_id') for s in sections]
             
             if new_section['section_id'] not in existing_ids:
                 sections.append(new_section)
