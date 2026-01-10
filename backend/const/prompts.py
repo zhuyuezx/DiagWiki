@@ -619,11 +619,17 @@ def build_diagram_sections_prompt_iteration3(
     # Format available files
     files_text = "\n".join([f"- {f}" for f in all_code_files])
     
-    prompt = f"""You are finalizing the diagram structure for the "{repo_name}" codebase.
+    prompt = f"""⚠️⚠️⚠️ CRITICAL SECTION COUNT REQUIREMENT ⚠️⚠️⚠️
+YOU MUST RETURN EXACTLY {len(refined_sections)} SECTIONS IN YOUR JSON RESPONSE.
+DO NOT MERGE, COMBINE, OR OMIT ANY SECTIONS.
+THIS IS A STRICT REQUIREMENT - COUNT YOUR SECTIONS BEFORE SUBMITTING!
+⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 
-🎯 ITERATION 3: ASSIGN CODE FILES TO SECTIONS
+You are finalizing the diagram structure for the "{repo_name}" codebase.
 
-Refined sections from iteration 2:
+🎯 ITERATION 3: ASSIGN CODE FILES TO SECTIONS (DO NOT MODIFY SECTION STRUCTURE!)
+
+INPUT: {len(refined_sections)} refined sections from iteration 2:
 
 {sections_text}
 
@@ -631,10 +637,20 @@ Available code files in the repository:
 
 {files_text}
 
-⚠️ CRITICAL REQUIREMENT: You MUST return ALL {len(refined_sections)} sections from iteration 2.
-DO NOT merge, combine, or omit any sections. Each section must be preserved individually.
+🚨 YOUR ONLY TASK: Add file_references field to EACH existing section.
+   - DO NOT change section_id, section_title, section_description, or diagram_type
+   - DO NOT merge similar sections
+   - DO NOT consolidate sections
+   - DO NOT remove any sections
+   - ONLY add file_references field to existing sections
 
-Your task is to ASSIGN relevant code files to each section:
+EXPECTED OUTPUT COUNT: {len(refined_sections)} sections
+REQUIRED: Each section MUST have EXACTLY these 5 fields:
+1. section_id (from iteration 2)
+2. section_title (from iteration 2)
+3. section_description (from iteration 2)
+4. diagram_type (from iteration 2)
+5. file_references (NEW - you add this)
 
 ASSIGNMENT GUIDELINES:
 1. For each section, identify which code files are relevant for creating that diagram
@@ -656,19 +672,43 @@ For each section, provide a file_references string that:
 Example file_references:
 "backend/api.py (defines FastAPI endpoints), backend/utils/wiki_generator.py (core wiki generation logic), backend/utils/rag.py (RAG system integration). These files form the request-response pipeline: API receives requests → WikiGenerator orchestrates → RAG retrieves context. Key concepts: endpoint routing, generation workflow, context retrieval."
 
-Return sections with file assignments in the following JSON format:
+🎯 CRITICAL: If input has {len(refined_sections)} sections, output MUST have {len(refined_sections)} sections!
 
+EXAMPLE JSON FORMAT (showing preservation of multiple sections):
+If iteration 2 gave you these 3 sections:
+1. api-flow → YOU KEEP: api-flow
+2. data-pipeline → YOU KEEP: data-pipeline  
+3. ui-components → YOU KEEP: ui-components
+
+Your output MUST be:
 {{
   "sections": [
     {{
-      "section_id": "identifier-from-iteration-2",
-      "section_title": "Title from iteration 2",
-      "section_description": "Description from iteration 2",
-      "diagram_type": "type-from-iteration-2",
-      "file_references": "Detailed analysis of assigned files, their relationships, connections, and key concepts to visualize"
+      "section_id": "api-flow",
+      "section_title": "API Request Flow",
+      "section_description": "How requests are processed",
+      "diagram_type": "sequence",
+      "file_references": "backend/api.py (endpoints), utils/handler.py (processing)..."
+    }},
+    {{
+      "section_id": "data-pipeline",
+      "section_title": "Data Processing Pipeline",
+      "section_description": "How data flows through system",
+      "diagram_type": "flowchart",
+      "file_references": "utils/data.py (transformation), db/models.py (storage)..."
+    }},
+    {{
+      "section_id": "ui-components",
+      "section_title": "Frontend Components",
+      "section_description": "UI component structure",
+      "diagram_type": "class",
+      "file_references": "src/components/*.svelte (UI elements), lib/stores.ts (state)..."
     }}
   ]
 }}
+
+⚠️ Notice: 3 input sections → 3 output sections. SAME COUNT. SAME IDs. SAME TITLES.
+           ONLY the file_references field is new!
 
 ⚠️ CRITICAL JSON REQUIREMENTS:
 1. Return ONLY valid JSON - no markdown code blocks, no extra text
@@ -682,10 +722,19 @@ Return sections with file assignments in the following JSON format:
 
 Generate the final analysis in {language_name} language.
 
-⚠️ FINAL CHECK BEFORE RETURNING:
-- Count: Did you return exactly {len(refined_sections)} sections?
-- Fields: Does each section have all 5 required fields?
-- If not, FIX IT NOW before returning!
+⚠️⚠️⚠️ MANDATORY PRE-SUBMISSION CHECKLIST ⚠️⚠️⚠️
+Before you return your JSON, count the sections in your response:
+Step 1: Count sections in my JSON: [ ??? ]
+Step 2: Required count: {len(refined_sections)}
+Step 3: Do they match? If NO, FIX IT NOW!
+
+❌ FAILING EXAMPLE (WRONG - section count mismatch):
+Input: 8 sections → Output: 2 sections ← YOU FAILED!
+
+✅ CORRECT EXAMPLE (RIGHT - section count matches):
+Input: 8 sections → Output: 8 sections ← CORRECT!
+
+🚨 IF YOUR SECTION COUNT ≠ {len(refined_sections)}, YOUR RESPONSE IS INVALID!
 
 Assign files now:"""
     
@@ -837,6 +886,34 @@ def build_single_diagram_prompt(
 - Add activation boxes with +/- where appropriate
 - Show the temporal sequence of interactions
 - Include alt/else for conditional flows, loop for iterations
+
+⚠️ CRITICAL: ACTIVATE/DEACTIVATE MUST BE BALANCED!
+  * Each participant: activate count MUST EQUAL deactivate count
+  * Common error: Deactivating inside alt/else branches AND after end (MULTIPLE DEACTIVATES)
+  
+  ❌ WRONG - Multiple deactivates for same participant:
+  activate LLMService
+  alt Branch A
+    LLMService->>X: call
+    deactivate LLMService  ← WRONG: deactivate in branch
+  else Branch B
+    LLMService->>Y: call
+    deactivate LLMService  ← WRONG: deactivate in branch
+  end
+  deactivate LLMService  ← WRONG: trying to deactivate already inactive!
+  
+  ✅ RIGHT - Only deactivate ONCE after all alt/else blocks:
+  activate LLMService
+  alt Branch A
+    LLMService->>X: call
+  else Branch B
+    LLMService->>Y: call
+  end
+  deactivate LLMService  ← CORRECT: Only ONE deactivate at the end
+  
+  🎯 RULE: If participant is active BEFORE alt/else, stay active THROUGH ALL BRANCHES.
+          Only deactivate ONCE after ALL alt/else blocks complete.
+
 - Example:
   sequenceDiagram
       participant Client
@@ -1173,29 +1250,73 @@ def build_diagram_correction_prompt(
        * Add deactivate at the end of the participant's lifecycle
    
    STEP 4: Common wrong patterns and their fixes:
-     ❌ WRONG:
+     
+     ❌ PATTERN 1: Deactivate inside alt/else branches + after end (DOUBLE DEACTIVATE)
      ```
+     activate A
      alt Valid
        A->>B: success
+       deactivate A  ← WRONG: inside alt
      else Invalid
        A->>B: error
-       deactivate A  ← inside else block
+       deactivate A  ← WRONG: inside else
      end
-     deactivate A  ← after end (DOUBLE!)
+     deactivate A  ← WRONG: after end (now it's TRIPLE!)
      ```
      
-     ✅ RIGHT:
+     ✅ FIX: Only deactivate ONCE, AFTER the alt/else/end block
      ```
+     activate A
      alt Valid
        A->>B: success
      else Invalid
        A->>B: error
      end
-     deactivate A  ← Only ONE, after end
+     deactivate A  ← CORRECT: Only ONE deactivate after end
      ```
+     
+     ❌ PATTERN 2: Multiple alt blocks with deactivates (MULTIPLE DEACTIVATES)
+     ```
+     activate LLMService
+     alt Provider is OpenAI
+       LLMService->>OpenAI: request
+       deactivate LLMService  ← WRONG: deactivate in first branch
+     else Provider is HuggingFace
+       LLMService->>HF: request
+       deactivate LLMService  ← WRONG: deactivate in second branch
+     end
+     alt Request Fails
+       LLMService->>ErrorHandler: handle
+       deactivate LLMService  ← WRONG: trying to deactivate already inactive
+     end
+     ```
+     
+     ✅ FIX: Only deactivate ONCE, after ALL alt/else blocks complete
+     ```
+     activate LLMService
+     alt Provider is OpenAI
+       LLMService->>OpenAI: request
+       # NO deactivate here
+     else Provider is HuggingFace
+       LLMService->>HF: request
+       # NO deactivate here
+     end
+     alt Request Fails
+       LLMService->>ErrorHandler: handle
+       # NO deactivate here
+     end
+     deactivate LLMService  ← CORRECT: Only ONE deactivate at the very end
+     ```
+     
+     🎯 GOLDEN RULE FOR ALT/ELSE BLOCKS:
+     - If a participant is active BEFORE alt/else, it stays active THROUGH ALL BRANCHES
+     - NEVER deactivate inside alt/else branches
+     - ONLY deactivate ONCE after ALL alt/else blocks complete
    
    STEP 5: VERIFY BEFORE RETURNING - For each participant:
-     - activate count MUST EQUAL deactivate count
+     - Count ALL activates: [ ??? ]
+     - Count ALL deactivates: [ ??? ]
+     - Must be EQUAL!
      - If not equal, go back to STEP 3 and fix it
      
    ⚠️ CRITICAL: IF YOU RETURN CODE WHERE COUNTS ARE NOT EQUAL, YOU HAVE FAILED!

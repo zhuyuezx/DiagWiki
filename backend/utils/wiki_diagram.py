@@ -224,6 +224,26 @@ class WikiDiagramGenerator:
         
         final_sections = final_response['sections']
         
+        # ⚠️ CRITICAL VALIDATION: Check section count matches iteration 2
+        if len(final_sections) != len(refined_sections):
+            logger.error(f"❌ ITERATION 3 SECTION COUNT MISMATCH!")
+            logger.error(f"   Expected: {len(refined_sections)} sections (from iteration 2)")
+            logger.error(f"   Got: {len(final_sections)} sections")
+            logger.error(f"   LLM collapsed sections despite explicit warnings!")
+            logger.error(f"   Section IDs from iteration 2: {[s['section_id'] for s in refined_sections]}")
+            logger.error(f"   Section IDs from iteration 3: {[s['section_id'] for s in final_sections]}")
+            
+            # 🚨 FALLBACK: Use iteration 2 sections and manually add empty file_references
+            logger.warning(f"⚠️  Using FALLBACK: Preserving iteration 2 structure with empty file_references")
+            final_sections = [
+                {
+                    **section,  # Copy all fields from iteration 2
+                    "file_references": "File assignment skipped due to LLM section collapse. Manual assignment needed."
+                }
+                for section in refined_sections
+            ]
+            logger.info(f"✅ FALLBACK APPLIED: Preserved {len(final_sections)} sections from iteration 2")
+        
         logger.info(f"Iteration 3 complete: {len(final_sections)} final sections with file assignments")
         
         # Cache the result
