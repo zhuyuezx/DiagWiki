@@ -250,7 +250,7 @@ classDiagram
 - Node.js 20+
 - Ollama running locally
   - Install from [ollama.ai](https://ollama.ai)
-  - Pull models: `ollama pull qwen2.5-coder:7b` and `ollama pull nomic-embed-text`
+  - Pull models: `ollama pull qwen3-coder:30b` and `ollama pull nomic-embed-text` (based on the what you put in .env file)
 - Conda (recommended) or pip for Python packages
 
 ### Setup
