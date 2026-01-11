@@ -4,12 +4,12 @@
 
 DiagWiki会分析你本地代码并生成基于图表的维基页面，解释系统的工作原理。您无需阅读大段文字，而是探索交互式图表，点击任何组件即可理解其作用。
 
-这是一个本地部署工具，通过 [Ollama](https://ollama.ai) 利用在您机器上运行的大型语言模型（LLM），确保代码永不离开您的环境。**因此，无需昂贵的 API 调用，也无数据隐私担忧！**
+这是一个本地部署工具，通过 [Ollama](https://ollama.ai) 利用在本地运行的大型语言模型（LLM），确保代码的相对安全。**因此，无需 API 调用产生的费用，也无数据隐私担忧！**
 
 ## 点击下方图片观看演示视频：
-[![演示视频](https://img.youtube.com/vi/NtdctuuEF_8/0.jpg)](https://youtu.be/NtdctuuEF_8)
+[![演示视频](https://i1.hdslb.com/bfs/archive/9fdbb86b783c360739fb42989a77cfb78a90f919.jpg@472w_264h_1c_!web-dynamic.avif)](https://www.bilibili.com/video/BV1sZ6RBYEfa/)
 
-## 解决的问题
+## 核心功能 & 试图解决的问题
 
 1. 理解复杂代码库并通过查询聊天框以可视化方式呈现架构，提升清晰度
 2. 从代码中自动生成准确、详细的图表用于文档编写
